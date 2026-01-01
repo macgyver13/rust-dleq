@@ -1,0 +1,7 @@
+# .gitignore for rust-dleq repository.
+
+# Lock files
+Cargo.lock
+
+# Build artifacts
+target
