@@ -140,6 +140,7 @@ name = "rust-dleq"
 version = "0.1.0"
 dependencies = [
  "bitcoin_hashes",
+ "cc",
  "hex",
  "secp256k1",
  "serde",

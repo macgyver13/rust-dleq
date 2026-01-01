@@ -1,4 +1,4 @@
-use rust_dleq::{generate_dleq_proof_with_generator, verify_dleq_proof_with_generator, DleqProof};
+use rust_dleq::{generate_dleq_proof, verify_dleq_proof, DleqProof};
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -79,6 +79,23 @@ fn test_vectors_generate_proof() {
             }
         };
 
+        // Check if this is the standard secp256k1 generator
+        // We only support standard G now (custom generators removed)
+        let standard_g = PublicKey::from_secret_key(
+            &secp,
+            &SecretKey::from_slice(&[
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 1,
+            ])
+            .unwrap(),
+        );
+
+        if point_g != standard_g {
+            println!("  SKIPPED: Custom generator not supported (only standard secp256k1 G)");
+            skipped += 1;
+            continue;
+        }
+
         // Parse scalar a
         let scalar_a = match SecretKey::from_slice(&scalar_a_bytes) {
             Ok(s) => s,
@@ -109,15 +126,8 @@ fn test_vectors_generate_proof() {
             Some(to_array_32(hex_decode(message_hex)))
         };
 
-        // Generate proof with custom generator
-        match generate_dleq_proof_with_generator(
-            &secp,
-            &scalar_a,
-            Some(&point_g),
-            &point_b,
-            &auxrand_r,
-            message.as_ref(),
-        ) {
+        // Generate proof with standard generator
+        match generate_dleq_proof(&secp, &scalar_a, &point_b, &auxrand_r, message.as_ref()) {
             Ok(proof) => {
                 let expected_proof = to_array_64(expected_proof_bytes);
                 if proof.as_bytes() == &expected_proof {
@@ -155,6 +165,7 @@ fn test_vectors_verify_proof() {
 
     let mut passed = 0;
     let mut failed = 0;
+    let mut skipped = 0;
 
     for (_line_num, line) in reader.lines().enumerate().skip(1) {
         let line = line.expect("Failed to read line");
@@ -195,6 +206,23 @@ fn test_vectors_verify_proof() {
                 continue;
             }
         };
+
+        // Check if this is the standard secp256k1 generator
+        // We only support standard G now (custom generators removed)
+        let standard_g = PublicKey::from_secret_key(
+            &secp,
+            &SecretKey::from_slice(&[
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 1,
+            ])
+            .unwrap(),
+        );
+
+        if point_g != standard_g {
+            println!("  SKIPPED: Custom generator not supported (only standard secp256k1 G)");
+            skipped += 1;
+            continue;
+        }
 
         // Parse points
         let point_a = match PublicKey::from_slice(&point_a_bytes) {
@@ -239,11 +267,10 @@ fn test_vectors_verify_proof() {
             Some(to_array_32(hex_decode(message_hex)))
         };
 
-        // Verify proof with custom generator
-        match verify_dleq_proof_with_generator(
+        // Verify proof with standard generator
+        match verify_dleq_proof(
             &secp,
             &point_a,
-            Some(&point_g),
             &point_b,
             &point_c,
             &proof,
@@ -269,9 +296,10 @@ fn test_vectors_verify_proof() {
     }
 
     println!("\n=== Verify Proof Test Summary ===");
-    println!("Passed: {}", passed);
-    println!("Failed: {}", failed);
-    println!("Total:  {}", passed + failed);
+    println!("Passed:  {}", passed);
+    println!("Failed:  {}", failed);
+    println!("Skipped: {}", skipped);
+    println!("Total:   {}", passed + failed + skipped);
 
     assert_eq!(failed, 0, "Some test vectors failed!");
 }

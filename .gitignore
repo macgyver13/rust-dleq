@@ -5,3 +5,6 @@ Cargo.lock
 
 # Build artifacts
 target
+
+.jj
+.claude
