@@ -1,37 +1,23 @@
 # rust-dleq
 
-
-
 BIP-374 DLEQ (Discrete Log Equality) proof implementation for Bitcoin.
 
 ## Overview
 
-This library implements [BIP-374](https://github.com/bitcoin/bips/blob/master/bip-0374.mediawiki) DLEQ proofs, which prove that the same discrete logarithm relationship holds across two different bases without revealing the private key. Currently DLEQ proofs are primarily used in [BIP-352 Silent Payments](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki) to verify correct ECDH computation.
+This library implements [BIP-374](https://github.com/bitcoin/bips/blob/master/bip-0374.mediawiki) DLEQ proofs, which prove that the same discrete logarithm relationship holds across two different bases without revealing the private key. DLEQ proofs are primarily used in [BIP-352 Silent Payments](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki) to verify correct ECDH computation.
 
-**What is a DLEQ proof?**
-
-A DLEQ proof demonstrates: `log_G(A) = log_B(C)`
-
-Where:
-
-- `G` is the generator point
-- `A = a·G` (your public key)
-- `B` is another public key (e.g., recipient's scan key)
-- `C = a·B` (ECDH shared secret)
-- `a` is the private key (never revealed)
+**Implementation Status:** This crate is based on [libsecp256k1 PR #1651](https://github.com/bitcoin-core/secp256k1/pull/1651) and is planned to be upstreamed to [rust-secp256k1](https://github.com/rust-bitcoin/rust-secp256k1) as this implementation matures.  [Contributions](#contributing) are welcome!
 
 ## Features
 
-- BIP-374 compliant implementation
+- **`standalone`** (default): Pure Rust implementation using rust-secp256k1 for EC operations
+- **`native`**: Direct FFI to libsecp256k1 (requires secp256k1 git submodule)
+- BIP-374 v0.2.0  compliant with test vectors
 - Type-safe`DleqProof` wrapper
-- Support for custom generator points
 - `no_std` compatible (requires`alloc`)
 - Optional serde support
-- Minimal dependencies
 
 ## Installation
-
-Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -39,189 +25,108 @@ rust-dleq = "0.1"
 secp256k1 = "0.29"
 ```
 
-## Quick Start
+For native implementation (using libsecp256k1 directly):
 
-### Generating a Proof
+```toml
+[dependencies]
+rust-dleq = { version = "0.1", default-features = false, features = ["native"] }
+```
+
+## Quick Start with Just
+
+This project uses [`just`](https://github.com/casey/just) for task running:
+
+```bash
+# Test with standalone (default, pure Rust)
+just test-standalone
+
+# Test with native (libsecp256k1 FFI)
+just test-native
+
+# Run all checks and tests for both implementations
+just check
+just test
+just build
+```
+
+## Usage
 
 ```rust
-use rust_dleq::{generate_dleq_proof, DleqProof};
+use rust_dleq::{generate_dleq_proof, verify_dleq_proof, DleqProof};
 use secp256k1::{Secp256k1, SecretKey, PublicKey};
 
 let secp = Secp256k1::new();
 
 // Your private key
 let secret = SecretKey::from_slice(&[0x01; 32])?;
+let pubkey = PublicKey::from_secret_key(&secp, &secret);
 
 // Recipient's scan key
-let scan_key = PublicKey::from_secret_key(&secp, 
+let scan_key = PublicKey::from_secret_key(&secp,
     &SecretKey::from_slice(&[0x02; 32])?);
 
-// Generate proof (with 32 bytes of randomness)
-let aux_rand = [0x03; 32];
-let proof: DleqProof = generate_dleq_proof(
-    &secp, 
-    &secret, 
-    &scan_key, 
-    &aux_rand, 
-    None  // Optional message
-)?;
-
-// Access proof bytes
-let bytes: &[u8; 64] = proof.as_bytes();
-```
-
-### Verifying a Proof
-
-```rust
-use rust_dleq::{verify_dleq_proof, DleqProof};
-use secp256k1::{Secp256k1, PublicKey};
-
-let secp = Secp256k1::new();
-
-// Public values
-let pubkey = PublicKey::from_secret_key(&secp, &secret);
+// Compute ECDH shared secret
 let ecdh_share = scan_key.mul_tweak(&secp, &secret.into())?;
 
-// Verify the proof
-let is_valid = verify_dleq_proof(
-    &secp,
-    &pubkey,
-    &scan_key,
-    &ecdh_share,
-    &proof,
-    None  // Optional message (must match generation)
-)?;
+// Generate proof with 32 bytes of randomness
+let aux_rand = [0x03; 32];
+let proof = generate_dleq_proof(&secp, &secret, &scan_key, &aux_rand, None)?;
 
+// Verify the proof
+let is_valid = verify_dleq_proof(&secp, &pubkey, &scan_key, &ecdh_share, &proof, None)?;
 assert!(is_valid);
 ```
 
-### Custom Generator Points
+## API
 
-For non-standard elliptic curve operations:
+**Types:**
 
-```rust
-use rust_dleq::{generate_dleq_proof_with_generator, verify_dleq_proof_with_generator};
+- `DleqProof` - Type-safe 64-byte proof wrapper with serde support
 
-// Use custom generator point
-let custom_generator = PublicKey::from_slice(&custom_point_bytes)?;
+**Functions:**
 
-let proof = generate_dleq_proof_with_generator(
-    &secp,
-    &secret,
-    &scan_key,
-    &aux_rand,
-    None,
-    Some(&custom_generator)  // Custom generator
-)?;
+- `generate_dleq_proof(secp, secret, point, aux_rand, msg)` - Generate proof
+- `verify_dleq_proof(secp, pubkey, point, result, proof, msg)` - Verify proof
 
-let is_valid = verify_dleq_proof_with_generator(
-    &secp,
-    &pubkey,
-    &scan_key,
-    &ecdh_share,
-    &proof,
-    None,
-    Some(&custom_generator)  // Must match generation
-)?;
-```
+**Cargo Features:**
 
-## API Reference
-
-### Types
-
-- **`DleqProof`** - Type-safe wrapper for 64-byte proofs
-
-  - `as_bytes() -> &[u8; 64]` - Get proof bytes
-  - `From<[u8; 64]>` - Create from byte array
-  - `TryFrom<&[u8]>` - Parse from slice
-  - Optional serde support with`serde` feature
-- **`DleqError`** - Error type for proof operations
-
-  - `InvalidNonce`,`InvalidChallenge`,`InvalidProof`
-  - `TweakFailed`,`PointCombineFailed`,`SelfVerificationFailed`
-
-### Functions
-
-- **`generate_dleq_proof()`** - Generate standard DLEQ proof
-- **`generate_dleq_proof_with_generator()`** - Generate with custom generator
-- **`verify_dleq_proof()`** - Verify standard DLEQ proof
-- **`verify_dleq_proof_with_generator()`** - Verify with custom generator
-
-## Features
-
-```toml
-[dependencies]
-rust-dleq = { version = "0.1", features = ["serde"] }
-```
-
-- **`std`** (default) - Standard library support
-- **`serde`** - Serialize/deserialize`DleqProof` as hex or bytes
-
-## `no_std` Support
-
-For embedded or `no_std` environments:
-
-```toml
-[dependencies]
-rust-dleq = { version = "0.1", default-features = false }
-```
-
-Requires `alloc` for dynamic allocations.
-
-## Technical Details
-
-### Proof Structure
-
-A DLEQ proof consists of 64 bytes: `[s || e]`
-
-- `s` (32 bytes) - Scalar proof component
-- `e` (32 bytes) - Challenge hash
-
-### Tagged Hashes
-
-Uses BIP-340 style tagged hashing:
-
-- `BIP0374/aux` - Auxiliary randomness processing
-- `BIP0374/nonce` - Nonce generation
-- `BIP0374/challenge` - Challenge computation
-
-### Security Notes
-
-- **Randomness**: Always use cryptographically secure random bytes for`aux_rand`
-- **Reuse**: Don't reuse the same`aux_rand` for multiple proofs with the same key pair
-- **Verification**: Proofs include self-verification to catch implementation errors
+- `standalone` (default) - Pure Rust implementation
+- `native` - libsecp256k1 FFI implementation
+- `serde` - Serialization support
+- `std` (default) - Standard library (disable for`no_std`)
 
 ## Testing
 
-The library includes comprehensive test vectors from BIP-374:
-
 ```bash
-# Run all tests
-cargo test
+# Using just (recommended)
+just test              # Test both implementations
+just test-standalone   # Test standalone only
+just test-native       # Test native only
 
-# Run with serde support
-cargo test --features serde
-
-# Run test vectors
-cargo test --test test_vectors
+# Using cargo directly
+cargo test --features standalone
+cargo test --no-default-features --features native
 ```
 
-Test vectors are located in `tests/test_vectors_*.csv`.
+Test vectors from BIP-374 are in `tests/test_vectors_*.csv`.
 
-## License
+## Contributing
 
-CC0-1.0 - Public Domain
+Contributions are welcome! Please ensure:
+
+```bash
+just fmt     # Format code
+just lint    # Run clippy on both implementations
+just test    # All tests pass
+```
 
 ## Resources
 
 - [BIP-374: Discrete Log Equality Proofs](https://github.com/bitcoin/bips/blob/master/bip-0374.mediawiki)
 - [BIP-352: Silent Payments](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki)
+- [libsecp256k1 PR #1651](https://github.com/bitcoin-core/secp256k1/pull/1651)
 - [rust-secp256k1](https://github.com/rust-bitcoin/rust-secp256k1)
 
-## Contributing
+## License
 
-Contributions are welcome. Please ensure:
-
-- All tests pass (`cargo test --all-features`)
-- Code follows Rust conventions
-- Documentation is updated for API changes
+CC0-1.0 - Public Domain
