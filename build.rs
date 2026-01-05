@@ -7,14 +7,24 @@
 
 #[cfg(feature = "native")]
 fn build_secp256k1() {
-    use std::path::Path;
+    use std::env;
+    use std::path::{Path, PathBuf};
 
-    let secp_base = Path::new("secp256k1");
-
-    // Check if submodule is initialized
-    if !secp_base.join("src/secp256k1.c").exists() {
-        panic!("secp256k1 submodule not initialized. Run: git submodule update --init --recursive");
-    }
+    // Try multiple secp256k1sources in order of preference
+    let secp_base = if let Ok(custom_path) = env::var("SECP256K1_SRC") {
+        PathBuf::from(custom_path)
+    } else if Path::new("secp256k1/src/secp256k1.c").exists() {
+        PathBuf::from("secp256k1")
+    } else if Path::new("vendor/secp256k1/src/secp256k1.c").exists() {
+        PathBuf::from("vendor/secp256k1")
+    } else {
+        panic!(
+            "secp256k1 source not found. Either:\n\
+                1. Run: git submodule update --init --recursive, OR\n\
+                2. Set SECP256K1_SRC environment variable, OR\n\
+                3. Use the 'standalone' feature instead"
+        );
+    };
 
     // Compile secp256k1.c (single-file compilation includes all modules)
     cc::Build::new()
@@ -25,7 +35,7 @@ fn build_secp256k1() {
         .define("ENABLE_MODULE_EXTRAKEYS", None) // Required by Silent Payments
         .define("ENABLE_MODULE_SCHNORRSIG", None) // Required for xonly pubkeys
         // Include paths
-        .include(secp_base)
+        .include(&secp_base)
         .include(secp_base.join("include"))
         .include(secp_base.join("src"))
         // Optimization and warnings
@@ -36,8 +46,8 @@ fn build_secp256k1() {
         .compile("secp256k1");
 
     // Tell cargo to recompile if the secp256k1 submodule changes
-    println!("cargo:rerun-if-changed=secp256k1/src");
-    println!("cargo:rerun-if-changed=secp256k1/include");
+    println!("cargo:rerun-if-changed={}/src", secp_base.display());
+    println!("cargo:rerun-if-changed={}/include", secp_base.display());
 }
 
 #[cfg(not(feature = "native"))]

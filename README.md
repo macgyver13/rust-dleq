@@ -32,6 +32,11 @@ For native implementation (using libsecp256k1 directly):
 rust-dleq = { version = "0.1", default-features = false, features = ["native"] }
 ```
 
+**Note:** The `native` feature requires secp256k1 source files. The build script checks:
+1. `vendor/secp256k1/` (vendored copy, included in repo)
+2. `secp256k1/` (git submodule: `git clone --branch dleq-sp-stratospher https://github.com/macgyver13/secp256k1.git secp256k1`)
+3. Custom path via `SECP256K1_SRC` environment variable
+
 ## Quick Start with Just
 
 This project uses [`just`](https://github.com/casey/just) for task running:
