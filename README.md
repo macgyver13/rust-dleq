@@ -115,6 +115,29 @@ cargo test --no-default-features --features native
 
 Test vectors from BIP-374 are in `tests/test_vectors_*.csv`.
 
+## Updating Vendored secp256k1 Files
+
+The `native` feature uses vendored secp256k1 C library files with DLEQ support. To update these files from your local secp256k1 repository:
+
+```bash
+# Use default path ($HOME/src/secp256k1)
+just update-vendor
+
+# Or specify a custom path
+just update-vendor /path/to/secp256k1
+```
+
+This command:
+- Cleans existing vendored files to avoid bloat
+- Copies headers, modules, and precomputed tables (~3.3MB)
+- Ensures the vendored copy stays in sync with upstream
+
+**What gets updated:**
+- Public API headers (`include/secp256k1*.h`)
+- Module implementations (`src/modules/*`)
+- Source headers and main file (`src/*.h`, `src/secp256k1.c`)
+- Precomputed tables (`src/precomputed_*.c` - 2.5MB)
+
 ## Contributing
 
 Contributions are welcome! Please ensure:

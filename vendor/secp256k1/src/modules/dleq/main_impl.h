@@ -1,5 +1,13 @@
-#ifndef SECP256K1_DLEQ_IMPL_H
-#define SECP256K1_DLEQ_IMPL_H
+/***********************************************************************
+ * Distributed under the MIT software license, see the accompanying    *
+ * file COPYING or https://www.opensource.org/licenses/mit-license.php.*
+ ***********************************************************************/
+
+#ifndef SECP256K1_MODULE_DLEQ_MAIN_H
+#define SECP256K1_MODULE_DLEQ_MAIN_H
+
+#include "../../../include/secp256k1.h"
+#include "../../../include/secp256k1_dleq.h"
 
 /* Initializes SHA256 with fixed midstate. This midstate was computed by applying
  * SHA256 to SHA256("BIP0374/aux")||SHA256("BIP0374/aux"). */
@@ -52,9 +60,11 @@ static void secp256k1_dleq_sha256_tagged(secp256k1_sha256 *sha) {
 static int secp256k1_dleq_hash_point(secp256k1_sha256 *sha, secp256k1_ge *p) {
     unsigned char buf[33];
     size_t size = 33;
-    if (!secp256k1_eckey_pubkey_serialize(p, buf, &size, 1)) {
+    /* Reject infinity point */
+    if (secp256k1_ge_is_infinity(p)) {
         return 0;
     }
+    secp256k1_eckey_pubkey_serialize33(p, buf);
     secp256k1_sha256_write(sha, buf, size);
     return 1;
 }
@@ -142,7 +152,7 @@ static void secp256k1_dleq_pair(const secp256k1_ecmult_gen_context *ecmult_gen_c
     secp256k1_ge_set_gej(C, &Cj);
 }
 
-/* DLEQ Proof Generation
+/* DLEQ Proof Generation (internal)
  *
  * For given elliptic curve points A, B, C, and G, the prover generates a proof to prove knowledge of a scalar a such
  * that A = a⋅G and C = a⋅B without revealing anything about a.
@@ -157,7 +167,7 @@ static void secp256k1_dleq_pair(const secp256k1_ecmult_gen_context *ecmult_gen_c
  * aux_rand32 : pointer to 32-byte auxiliary randomness used to generate the nonce in secp256k1_nonce_function_dleq.
  *          m : an optional message
  * */
-static int secp256k1_dleq_prove(const secp256k1_context *ctx, secp256k1_scalar *s, secp256k1_scalar *e, const secp256k1_scalar *a, secp256k1_ge *B, secp256k1_ge *A, secp256k1_ge *C, const unsigned char *aux_rand32, const unsigned char *m) {
+static int secp256k1_dleq_prove_internal(const secp256k1_context *ctx, secp256k1_scalar *s, secp256k1_scalar *e, const secp256k1_scalar *a, secp256k1_ge *B, secp256k1_ge *A, secp256k1_ge *C, const unsigned char *aux_rand32, const unsigned char *m) {
     secp256k1_ge R1, R2;
     secp256k1_scalar k = { 0 };
     unsigned char a32[32];
@@ -165,18 +175,15 @@ static int secp256k1_dleq_prove(const secp256k1_context *ctx, secp256k1_scalar *
     unsigned char B_33[33];
     unsigned char C_33[33];
     int ret = 1;
-    size_t pubkey_size = 33;
 
     secp256k1_scalar_get_b32(a32, a);
-    if (!secp256k1_eckey_pubkey_serialize(B, B_33, &pubkey_size, 1)) {
+    /* Reject infinity points */
+    if (secp256k1_ge_is_infinity(B) || secp256k1_ge_is_infinity(A) || secp256k1_ge_is_infinity(C)) {
         return 0;
     }
-    if (!secp256k1_eckey_pubkey_serialize(A, A_33, &pubkey_size, 1)) {
-        return 0;
-    }
-    if (!secp256k1_eckey_pubkey_serialize(C, C_33, &pubkey_size, 1)) {
-        return 0;
-    }
+    secp256k1_eckey_pubkey_serialize33(B, B_33);
+    secp256k1_eckey_pubkey_serialize33(A, A_33);
+    secp256k1_eckey_pubkey_serialize33(C, C_33);
     ret &= secp256k1_dleq_nonce(&k, a32, A_33, C_33, aux_rand32, m);
 
     /* R1 = k*G, R2 = k*B */
@@ -197,7 +204,7 @@ static int secp256k1_dleq_prove(const secp256k1_context *ctx, secp256k1_scalar *
     return ret;
 }
 
-/* DLEQ Proof Verification
+/* DLEQ Proof Verification (internal)
  *
  * Verifies the proof. If the following algorithm succeeds, the points A and C were both generated from the same scalar.
  * The former from multiplying by G, and the latter from multiplying by B.
@@ -209,7 +216,7 @@ static int secp256k1_dleq_prove(const secp256k1_context *ctx, secp256k1_scalar *
  *          C : point on the curve(a⋅B) computed from a
  *          m : optional message
  * */
-static int secp256k1_dleq_verify(secp256k1_scalar *s, secp256k1_scalar *e, secp256k1_ge *A, secp256k1_ge *B, secp256k1_ge *C, const unsigned char *m) {
+static int secp256k1_dleq_verify_internal(secp256k1_scalar *s, secp256k1_scalar *e, secp256k1_ge *A, secp256k1_ge *B, secp256k1_ge *C, const unsigned char *m) {
     secp256k1_scalar e_neg;
     secp256k1_scalar e_expected;
     secp256k1_gej Bj;
@@ -238,4 +245,146 @@ static int secp256k1_dleq_verify(secp256k1_scalar *s, secp256k1_scalar *e, secp2
     return secp256k1_scalar_is_zero(&e_expected);
 }
 
-#endif
+/* Public API wrapper functions */
+
+int secp256k1_dleq_prove(
+    const secp256k1_context *ctx,
+    secp256k1_dleq_proof *proof,
+    const unsigned char *seckey32,
+    const secp256k1_pubkey *pubkey_B,
+    const unsigned char *aux_rand32,
+    const unsigned char *msg
+) {
+    secp256k1_scalar a, s, e;
+    secp256k1_ge A, B, C;
+    int overflow;
+    int ret;
+
+    /* Verify context and required arguments */
+    VERIFY_CHECK(ctx != NULL);
+    ARG_CHECK(secp256k1_ecmult_gen_context_is_built(&ctx->ecmult_gen_ctx));
+    ARG_CHECK(proof != NULL);
+    ARG_CHECK(seckey32 != NULL);
+    ARG_CHECK(pubkey_B != NULL);
+    /* aux_rand32 and msg are optional (can be NULL) */
+
+    /* Parse secret key */
+    secp256k1_scalar_set_b32(&a, seckey32, &overflow);
+    if (overflow || secp256k1_scalar_is_zero(&a)) {
+        return 0;
+    }
+
+    /* Load base point B */
+    if (!secp256k1_pubkey_load(ctx, &B, pubkey_B)) {
+        secp256k1_scalar_clear(&a);
+        return 0;
+    }
+
+    /* Compute A = a*G and C = a*B */
+    secp256k1_dleq_pair(&ctx->ecmult_gen_ctx, &A, &C, &a, &B);
+
+    /* Generate proof using internal function */
+    ret = secp256k1_dleq_prove_internal(ctx, &s, &e, &a, &B, &A, &C, aux_rand32, msg);
+    if (!ret) {
+        secp256k1_scalar_clear(&a);
+        return 0;
+    }
+
+    /* Serialize proof: e || s (64 bytes) */
+    secp256k1_scalar_get_b32(&proof->data[0], &e);
+    secp256k1_scalar_get_b32(&proof->data[32], &s);
+
+    /* Clear sensitive data */
+    secp256k1_scalar_clear(&a);
+
+    return 1;
+}
+
+int secp256k1_dleq_verify(
+    const secp256k1_context *ctx,
+    const secp256k1_dleq_proof *proof,
+    const secp256k1_pubkey *pubkey_A,
+    const secp256k1_pubkey *pubkey_B,
+    const secp256k1_pubkey *pubkey_C,
+    const unsigned char *msg
+) {
+    secp256k1_scalar s, e;
+    secp256k1_ge A, B, C;
+    int overflow;
+
+    /* Verify context and required arguments */
+    VERIFY_CHECK(ctx != NULL);
+    ARG_CHECK(proof != NULL);
+    ARG_CHECK(pubkey_A != NULL);
+    ARG_CHECK(pubkey_B != NULL);
+    ARG_CHECK(pubkey_C != NULL);
+    /* msg is optional (can be NULL) */
+
+    /* Parse proof scalars */
+    secp256k1_scalar_set_b32(&e, &proof->data[0], &overflow);
+    if (overflow) {
+        return 0;
+    }
+
+    secp256k1_scalar_set_b32(&s, &proof->data[32], &overflow);
+    if (overflow) {
+        return 0;
+    }
+
+    /* Load public keys */
+    if (!secp256k1_pubkey_load(ctx, &A, pubkey_A)) {
+        return 0;
+    }
+    if (!secp256k1_pubkey_load(ctx, &B, pubkey_B)) {
+        return 0;
+    }
+    if (!secp256k1_pubkey_load(ctx, &C, pubkey_C)) {
+        return 0;
+    }
+
+    /* Verify proof using internal function */
+    return secp256k1_dleq_verify_internal(&s, &e, &A, &B, &C, msg);
+}
+
+int secp256k1_dleq_proof_serialize(
+    const secp256k1_context *ctx,
+    unsigned char *out64,
+    const secp256k1_dleq_proof *proof
+) {
+    VERIFY_CHECK(ctx != NULL);
+    ARG_CHECK(out64 != NULL);
+    ARG_CHECK(proof != NULL);
+
+    memcpy(out64, proof->data, 64);
+    return 1;
+}
+
+int secp256k1_dleq_proof_parse(
+    const secp256k1_context *ctx,
+    secp256k1_dleq_proof *proof,
+    const unsigned char *in64
+) {
+    secp256k1_scalar e, s;
+    int overflow;
+
+    VERIFY_CHECK(ctx != NULL);
+    ARG_CHECK(proof != NULL);
+    ARG_CHECK(in64 != NULL);
+
+    /* Validate scalars are in valid range */
+    secp256k1_scalar_set_b32(&e, &in64[0], &overflow);
+    if (overflow) {
+        return 0;
+    }
+
+    secp256k1_scalar_set_b32(&s, &in64[32], &overflow);
+    if (overflow) {
+        return 0;
+    }
+
+    /* Store serialized form */
+    memcpy(proof->data, in64, 64);
+    return 1;
+}
+
+#endif /* SECP256K1_MODULE_DLEQ_MAIN_H */

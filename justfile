@@ -89,3 +89,68 @@ ci-lint: (ci "lint" NIGHTLY_VERSION)
 # Bitcoin core integration tests.
 [group('ci')]
 ci-integration: (ci "integration")
+
+# Update vendored secp256k1 files from upstream.
+[group('tools')]
+update-vendor secp_path="":
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  # Use provided path or default to $HOME/src/secp256k1
+  if [ -n "{{secp_path}}" ]; then
+    SECP_SRC="{{secp_path}}"
+  else
+    SECP_SRC="$HOME/src/secp256k1"
+  fi
+
+  VENDOR_DIR="{{justfile_directory()}}/vendor/secp256k1"
+
+  if [ ! -d "$SECP_SRC" ]; then
+    echo "Error: secp256k1 source not found at $SECP_SRC"
+    echo "Usage: just update-vendor [path-to-secp256k1]"
+    echo "Default: \$HOME/src/secp256k1"
+    exit 1
+  fi
+
+  echo "Updating vendored secp256k1 from $SECP_SRC..."
+
+  # Clean existing vendored files to avoid bloat
+  echo "  - Cleaning existing vendored files..."
+  rm -rf "$VENDOR_DIR/include/secp256k1"*.h
+  rm -rf "$VENDOR_DIR/src/modules"/*
+  rm -f "$VENDOR_DIR/src"/*.h
+  rm -f "$VENDOR_DIR/src/secp256k1.c"
+  rm -f "$VENDOR_DIR/src/precomputed"*.c
+
+  # Copy headers
+  echo "  - Copying headers..."
+  cp -R "$SECP_SRC"/include/secp256k1* "$VENDOR_DIR/include/"
+
+  # Copy module implementations
+  echo "  - Copying modules..."
+  cp -R "$SECP_SRC"/src/modules/* "$VENDOR_DIR/src/modules/"
+
+  # Copy source headers
+  echo "  - Copying source headers..."
+  cp "$SECP_SRC"/src/*.h "$VENDOR_DIR/src/"
+
+  # Copy main secp256k1.c
+  echo "  - Copying secp256k1.c..."
+  cp "$SECP_SRC"/src/secp256k1.c "$VENDOR_DIR/src/"
+
+  # Copy precomputed tables (large files)
+  echo "  - Copying precomputed tables..."
+  cp "$SECP_SRC"/src/precomputed_ecmult.c "$VENDOR_DIR/src/"
+  cp "$SECP_SRC"/src/precomputed_ecmult_gen.c "$VENDOR_DIR/src/"
+
+  echo "✓ Vendored files updated successfully!"
+  echo ""
+  echo "Updated files:"
+  echo "  - Headers:       include/secp256k1*.h"
+  echo "  - Modules:       src/modules/*"
+  echo "  - Source:        src/*.h, src/secp256k1.c"
+  echo "  - Tables:        src/precomputed_*.c (2.5MB)"
+  echo ""
+  echo "Next steps:"
+  echo "  1. Test native build:  just test-native"
+  echo "  2. Verify BIP-374:     cargo test --features native --test test_vectors"

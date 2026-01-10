@@ -41,14 +41,24 @@ pub struct secp256k1_fe {
     pub n: [u32; 10],
 }
 
+// Flag type masks
+pub const SECP256K1_FLAGS_TYPE_CONTEXT: c_uint = 1 << 0;
+pub const SECP256K1_FLAGS_TYPE_COMPRESSION: c_uint = 1 << 1;
+pub const SECP256K1_FLAGS_BIT_CONTEXT_VERIFY: c_uint = 1 << 8;
+pub const SECP256K1_FLAGS_BIT_CONTEXT_SIGN: c_uint = 1 << 9;
+pub const SECP256K1_FLAGS_BIT_COMPRESSION: c_uint = 1 << 8;
+
 // Context flags
-pub const SECP256K1_CONTEXT_NONE: c_uint = 0;
-pub const SECP256K1_CONTEXT_SIGN: c_uint = 1 << 0;
-pub const SECP256K1_CONTEXT_VERIFY: c_uint = 1 << 1;
+pub const SECP256K1_CONTEXT_NONE: c_uint = SECP256K1_FLAGS_TYPE_CONTEXT;
+pub const SECP256K1_CONTEXT_SIGN: c_uint =
+    SECP256K1_FLAGS_TYPE_CONTEXT | SECP256K1_FLAGS_BIT_CONTEXT_SIGN;
+pub const SECP256K1_CONTEXT_VERIFY: c_uint =
+    SECP256K1_FLAGS_TYPE_CONTEXT | SECP256K1_FLAGS_BIT_CONTEXT_VERIFY;
 
 // Public key serialization flags
-pub const SECP256K1_EC_COMPRESSED: c_uint = 1 << 0;
-pub const SECP256K1_EC_UNCOMPRESSED: c_uint = 1 << 1;
+pub const SECP256K1_EC_COMPRESSED: c_uint =
+    SECP256K1_FLAGS_TYPE_COMPRESSION | SECP256K1_FLAGS_BIT_COMPRESSION;
+pub const SECP256K1_EC_UNCOMPRESSED: c_uint = SECP256K1_FLAGS_TYPE_COMPRESSION;
 
 extern "C" {
     // Context management
@@ -97,11 +107,52 @@ extern "C" {
     ) -> c_int;
 }
 
-// Note: The actual DLEQ functions (secp256k1_dleq_prove, secp256k1_dleq_verify)
-// are currently `static` in dleq_impl.h. We'll need to either:
-// 1. Create C wrapper functions that expose them
-// 2. Make them non-static in our fork
-// 3. Duplicate the logic here
-//
-// For now, we'll implement the DLEQ logic in Rust using the available FFI functions
-// above. This matches the standalone implementation but uses libsecp256k1 for EC ops.
+/// DLEQ proof structure (64 bytes: e || s)
+#[repr(C)]
+pub struct secp256k1_dleq_proof {
+    pub data: [c_uchar; 64],
+}
+
+extern "C" {
+    /// Generate a DLEQ proof.
+    ///
+    /// Returns: 1 on success, 0 on failure
+    pub fn secp256k1_dleq_prove(
+        ctx: *const secp256k1_context,
+        proof: *mut secp256k1_dleq_proof,
+        seckey32: *const c_uchar,
+        pubkey_B: *const secp256k1_pubkey,
+        aux_rand32: *const c_uchar,
+        msg: *const c_uchar,
+    ) -> c_int;
+
+    /// Verify a DLEQ proof.
+    ///
+    /// Returns: 1 if valid, 0 if invalid
+    pub fn secp256k1_dleq_verify(
+        ctx: *const secp256k1_context,
+        proof: *const secp256k1_dleq_proof,
+        pubkey_A: *const secp256k1_pubkey,
+        pubkey_B: *const secp256k1_pubkey,
+        pubkey_C: *const secp256k1_pubkey,
+        msg: *const c_uchar,
+    ) -> c_int;
+
+    /// Serialize a DLEQ proof to 64 bytes.
+    ///
+    /// Returns: 1 always
+    pub fn secp256k1_dleq_proof_serialize(
+        ctx: *const secp256k1_context,
+        out64: *mut c_uchar,
+        proof: *const secp256k1_dleq_proof,
+    ) -> c_int;
+
+    /// Parse a DLEQ proof from 64 bytes.
+    ///
+    /// Returns: 1 on success, 0 if invalid
+    pub fn secp256k1_dleq_proof_parse(
+        ctx: *const secp256k1_context,
+        proof: *mut secp256k1_dleq_proof,
+        in64: *const c_uchar,
+    ) -> c_int;
+}

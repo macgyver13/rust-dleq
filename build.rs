@@ -27,13 +27,13 @@ fn build_secp256k1() {
     };
 
     // Compile secp256k1.c (single-file compilation includes all modules)
-    cc::Build::new()
+    let mut build = cc::Build::new();
+    build
         .file(secp_base.join("src/secp256k1.c"))
-        // Enable required modules for Silent Payments (which includes DLEQ)
-        .define("ENABLE_MODULE_SILENTPAYMENTS", None)
-        .define("ENABLE_MODULE_ECDH", None)
-        .define("ENABLE_MODULE_EXTRAKEYS", None) // Required by Silent Payments
-        .define("ENABLE_MODULE_SCHNORRSIG", None) // Required for xonly pubkeys
+        .file(secp_base.join("src/precomputed_ecmult.c"))
+        .file(secp_base.join("src/precomputed_ecmult_gen.c"))
+        // Enable DLEQ module
+        .define("ENABLE_MODULE_DLEQ", None)
         // Include paths
         .include(&secp_base)
         .include(secp_base.join("include"))
@@ -41,9 +41,10 @@ fn build_secp256k1() {
         // Optimization and warnings
         .opt_level(3)
         .flag_if_supported("-Wno-unused-function")
-        .flag_if_supported("-Wno-unused-parameter")
-        // Compile
-        .compile("secp256k1");
+        .flag_if_supported("-Wno-unused-parameter");
+
+    // Compile
+    build.compile("secp256k1");
 
     // Tell cargo to recompile if the secp256k1 submodule changes
     println!("cargo:rerun-if-changed={}/src", secp_base.display());

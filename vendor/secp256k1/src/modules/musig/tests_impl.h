@@ -20,6 +20,7 @@
 #include "../../group.h"
 #include "../../hash.h"
 #include "../../util.h"
+#include "../../unit_test.h"
 
 #include "vectors.h"
 
@@ -36,7 +37,7 @@ static int create_keypair_and_pk(secp256k1_keypair *keypair, secp256k1_pubkey *p
 
 /* Just a simple (non-tweaked) 2-of-2 MuSig aggregate, sign, verify
  * test. */
-static void musig_simple_test(void) {
+static void musig_simple_test_internal(void) {
     unsigned char sk[2][32];
     secp256k1_keypair keypair[2];
     secp256k1_musig_pubnonce pubnonce[2];
@@ -200,6 +201,13 @@ static void musig_api_tests(void) {
     CHECK(secp256k1_musig_pubkey_agg(CTX, &agg_pk, &keyagg_cache, pk_ptr, 2) == 1);
     CHECK(secp256k1_musig_pubkey_agg(CTX, NULL, &keyagg_cache, pk_ptr, 2) == 1);
     CHECK(secp256k1_musig_pubkey_agg(CTX, &agg_pk, NULL, pk_ptr, 2) == 1);
+    /* check that NULL in array of public key pointers is not allowed */
+    for (i = 0; i < 2; i++) {
+        const secp256k1_pubkey *original_ptr = pk_ptr[i];
+        pk_ptr[i] = NULL;
+        CHECK_ILLEGAL(CTX, secp256k1_musig_pubkey_agg(CTX, &agg_pk, NULL, pk_ptr, 2));
+        pk_ptr[i] = original_ptr;
+    }
     CHECK_ILLEGAL(CTX, secp256k1_musig_pubkey_agg(CTX, &agg_pk, &keyagg_cache, NULL, 2));
     CHECK(memcmp_and_randomize(agg_pk.data, zeros132, sizeof(agg_pk.data)) == 0);
     CHECK_ILLEGAL(CTX, secp256k1_musig_pubkey_agg(CTX, &agg_pk, &keyagg_cache, invalid_pk_ptr2, 2));
@@ -349,6 +357,13 @@ static void musig_api_tests(void) {
 
     /** Receive nonces and aggregate **/
     CHECK(secp256k1_musig_nonce_agg(CTX, &aggnonce, pubnonce_ptr, 2) == 1);
+    /* check that NULL in array of public nonce pointers is not allowed */
+    for (i = 0; i < 2; i++) {
+        const secp256k1_musig_pubnonce *original_ptr = pubnonce_ptr[i];
+        pubnonce_ptr[i] = NULL;
+        CHECK_ILLEGAL(CTX, secp256k1_musig_nonce_agg(CTX, &aggnonce, pubnonce_ptr, 2));
+        pubnonce_ptr[i] = original_ptr;
+    }
     CHECK_ILLEGAL(CTX, secp256k1_musig_nonce_agg(CTX, NULL, pubnonce_ptr, 2));
     CHECK_ILLEGAL(CTX, secp256k1_musig_nonce_agg(CTX, &aggnonce, NULL, 2));
     CHECK_ILLEGAL(CTX, secp256k1_musig_nonce_agg(CTX, &aggnonce, pubnonce_ptr, 0));
@@ -473,6 +488,13 @@ static void musig_api_tests(void) {
 
     /** Signature aggregation and verification */
     CHECK(secp256k1_musig_partial_sig_agg(CTX, pre_sig, &session, partial_sig_ptr, 2) == 1);
+    /* check that NULL in array of partial signature pointers is not allowed */
+    for (i = 0; i < 2; i++) {
+        const secp256k1_musig_partial_sig *original_ptr = partial_sig_ptr[i];
+        partial_sig_ptr[i] = NULL;
+        CHECK_ILLEGAL(CTX, secp256k1_musig_partial_sig_agg(CTX, pre_sig, &session, partial_sig_ptr, 2));
+        partial_sig_ptr[i] = original_ptr;
+    }
     CHECK_ILLEGAL(CTX, secp256k1_musig_partial_sig_agg(CTX, NULL, &session, partial_sig_ptr, 2));
     CHECK_ILLEGAL(CTX, secp256k1_musig_partial_sig_agg(CTX, pre_sig, NULL, partial_sig_ptr, 2));
     CHECK_ILLEGAL(CTX, secp256k1_musig_partial_sig_agg(CTX, pre_sig, &invalid_session, partial_sig_ptr, 2));
@@ -629,7 +651,7 @@ static void musig_tweak_test_helper(const secp256k1_xonly_pubkey* agg_pk, const 
 
 /* Create aggregate public key P[0], tweak multiple times (using xonly and
  * plain tweaking) and test signing. */
-static void musig_tweak_test(void) {
+static void musig_tweak_test_internal(void) {
     unsigned char sk[2][32];
     secp256k1_pubkey pk[2];
     const secp256k1_pubkey *pk_ptr[2];
@@ -1114,28 +1136,24 @@ static void musig_test_static_nonce_gen_counter(void) {
     CHECK(secp256k1_memcmp_var(pubnonce66, expected_pubnonce, sizeof(pubnonce66)) == 0);
 }
 
-static void run_musig_tests(void) {
-    int i;
+/* --- Test registry --- */
+REPEAT_TEST(musig_simple_test)
+/* Run multiple times to ensure that pk and nonce have different y parities */
+REPEAT_TEST(musig_tweak_test)
 
-    for (i = 0; i < COUNT; i++) {
-        musig_simple_test();
-    }
-    musig_api_tests();
-    musig_nonce_test();
-    for (i = 0; i < COUNT; i++) {
-        /* Run multiple times to ensure that pk and nonce have different y
-         * parities */
-        musig_tweak_test();
-    }
-    sha256_tag_test();
-    musig_test_vectors_keyagg();
-    musig_test_vectors_noncegen();
-    musig_test_vectors_nonceagg();
-    musig_test_vectors_signverify();
-    musig_test_vectors_tweak();
-    musig_test_vectors_sigagg();
-
-    musig_test_static_nonce_gen_counter();
-}
+static const struct tf_test_entry tests_musig[] = {
+    CASE1(musig_simple_test),
+    CASE1(musig_api_tests),
+    CASE1(musig_nonce_test),
+    CASE1(musig_tweak_test),
+    CASE1(sha256_tag_test),
+    CASE1(musig_test_vectors_keyagg),
+    CASE1(musig_test_vectors_noncegen),
+    CASE1(musig_test_vectors_nonceagg),
+    CASE1(musig_test_vectors_signverify),
+    CASE1(musig_test_vectors_tweak),
+    CASE1(musig_test_vectors_sigagg),
+    CASE1(musig_test_static_nonce_gen_counter),
+};
 
 #endif
