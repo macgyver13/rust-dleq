@@ -245,11 +245,9 @@ static int secp256k1_dleq_verify_internal(secp256k1_scalar *s, secp256k1_scalar 
     return secp256k1_scalar_is_zero(&e_expected);
 }
 
-/* Public API wrapper functions */
-
 int secp256k1_dleq_prove(
     const secp256k1_context *ctx,
-    secp256k1_dleq_proof *proof,
+    unsigned char *proof64,
     const unsigned char *seckey32,
     const secp256k1_pubkey *pubkey_B,
     const unsigned char *aux_rand32,
@@ -260,41 +258,33 @@ int secp256k1_dleq_prove(
     int overflow;
     int ret;
 
-    /* Verify context and required arguments */
     VERIFY_CHECK(ctx != NULL);
     ARG_CHECK(secp256k1_ecmult_gen_context_is_built(&ctx->ecmult_gen_ctx));
-    ARG_CHECK(proof != NULL);
+    ARG_CHECK(proof64 != NULL);
     ARG_CHECK(seckey32 != NULL);
     ARG_CHECK(pubkey_B != NULL);
-    /* aux_rand32 and msg are optional (can be NULL) */
 
-    /* Parse secret key */
     secp256k1_scalar_set_b32(&a, seckey32, &overflow);
     if (overflow || secp256k1_scalar_is_zero(&a)) {
         return 0;
     }
 
-    /* Load base point B */
     if (!secp256k1_pubkey_load(ctx, &B, pubkey_B)) {
         secp256k1_scalar_clear(&a);
         return 0;
     }
 
-    /* Compute A = a*G and C = a*B */
     secp256k1_dleq_pair(&ctx->ecmult_gen_ctx, &A, &C, &a, &B);
 
-    /* Generate proof using internal function */
     ret = secp256k1_dleq_prove_internal(ctx, &s, &e, &a, &B, &A, &C, aux_rand32, msg);
     if (!ret) {
         secp256k1_scalar_clear(&a);
         return 0;
     }
 
-    /* Serialize proof: e || s (64 bytes) */
-    secp256k1_scalar_get_b32(&proof->data[0], &e);
-    secp256k1_scalar_get_b32(&proof->data[32], &s);
+    secp256k1_scalar_get_b32(&proof64[0], &e);
+    secp256k1_scalar_get_b32(&proof64[32], &s);
 
-    /* Clear sensitive data */
     secp256k1_scalar_clear(&a);
 
     return 1;
@@ -302,7 +292,7 @@ int secp256k1_dleq_prove(
 
 int secp256k1_dleq_verify(
     const secp256k1_context *ctx,
-    const secp256k1_dleq_proof *proof,
+    const unsigned char *proof64,
     const secp256k1_pubkey *pubkey_A,
     const secp256k1_pubkey *pubkey_B,
     const secp256k1_pubkey *pubkey_C,
@@ -312,26 +302,22 @@ int secp256k1_dleq_verify(
     secp256k1_ge A, B, C;
     int overflow;
 
-    /* Verify context and required arguments */
     VERIFY_CHECK(ctx != NULL);
-    ARG_CHECK(proof != NULL);
+    ARG_CHECK(proof64 != NULL);
     ARG_CHECK(pubkey_A != NULL);
     ARG_CHECK(pubkey_B != NULL);
     ARG_CHECK(pubkey_C != NULL);
-    /* msg is optional (can be NULL) */
 
-    /* Parse proof scalars */
-    secp256k1_scalar_set_b32(&e, &proof->data[0], &overflow);
+    secp256k1_scalar_set_b32(&e, &proof64[0], &overflow);
     if (overflow) {
         return 0;
     }
 
-    secp256k1_scalar_set_b32(&s, &proof->data[32], &overflow);
+    secp256k1_scalar_set_b32(&s, &proof64[32], &overflow);
     if (overflow) {
         return 0;
     }
 
-    /* Load public keys */
     if (!secp256k1_pubkey_load(ctx, &A, pubkey_A)) {
         return 0;
     }
@@ -342,49 +328,7 @@ int secp256k1_dleq_verify(
         return 0;
     }
 
-    /* Verify proof using internal function */
     return secp256k1_dleq_verify_internal(&s, &e, &A, &B, &C, msg);
-}
-
-int secp256k1_dleq_proof_serialize(
-    const secp256k1_context *ctx,
-    unsigned char *out64,
-    const secp256k1_dleq_proof *proof
-) {
-    VERIFY_CHECK(ctx != NULL);
-    ARG_CHECK(out64 != NULL);
-    ARG_CHECK(proof != NULL);
-
-    memcpy(out64, proof->data, 64);
-    return 1;
-}
-
-int secp256k1_dleq_proof_parse(
-    const secp256k1_context *ctx,
-    secp256k1_dleq_proof *proof,
-    const unsigned char *in64
-) {
-    secp256k1_scalar e, s;
-    int overflow;
-
-    VERIFY_CHECK(ctx != NULL);
-    ARG_CHECK(proof != NULL);
-    ARG_CHECK(in64 != NULL);
-
-    /* Validate scalars are in valid range */
-    secp256k1_scalar_set_b32(&e, &in64[0], &overflow);
-    if (overflow) {
-        return 0;
-    }
-
-    secp256k1_scalar_set_b32(&s, &in64[32], &overflow);
-    if (overflow) {
-        return 0;
-    }
-
-    /* Store serialized form */
-    memcpy(proof->data, in64, 64);
-    return 1;
 }
 
 #endif /* SECP256K1_MODULE_DLEQ_MAIN_H */

@@ -7,7 +7,7 @@
 
 #![allow(non_camel_case_types, non_snake_case, dead_code)]
 
-use std::os::raw::{c_int, c_uchar, c_uint, c_void};
+use std::os::raw::{c_int, c_uchar, c_uint};
 
 /// Opaque secp256k1 context type
 #[repr(C)]
@@ -72,39 +72,6 @@ extern "C" {
         input: *const c_uchar,
         inputlen: usize,
     ) -> c_int;
-
-    pub fn secp256k1_ec_pubkey_serialize(
-        ctx: *const secp256k1_context,
-        output: *mut c_uchar,
-        outputlen: *mut usize,
-        pubkey: *const secp256k1_pubkey,
-        flags: c_uint,
-    ) -> c_int;
-
-    pub fn secp256k1_ec_pubkey_create(
-        ctx: *const secp256k1_context,
-        pubkey: *mut secp256k1_pubkey,
-        seckey: *const c_uchar,
-    ) -> c_int;
-
-    // Scalar operations
-    pub fn secp256k1_scalar_set_b32(
-        r: *mut secp256k1_scalar,
-        bin: *const c_uchar,
-        overflow: *mut c_int,
-    );
-
-    pub fn secp256k1_scalar_get_b32(bin: *mut c_uchar, a: *const secp256k1_scalar);
-
-    // ECDH (needed for a*B computation)
-    pub fn secp256k1_ecdh(
-        ctx: *const secp256k1_context,
-        output: *mut c_uchar,
-        pubkey: *const secp256k1_pubkey,
-        seckey: *const c_uchar,
-        hashfp: *const c_void,
-        data: *mut c_void,
-    ) -> c_int;
 }
 
 /// DLEQ proof structure (64 bytes: e || s)
@@ -136,23 +103,5 @@ extern "C" {
         pubkey_B: *const secp256k1_pubkey,
         pubkey_C: *const secp256k1_pubkey,
         msg: *const c_uchar,
-    ) -> c_int;
-
-    /// Serialize a DLEQ proof to 64 bytes.
-    ///
-    /// Returns: 1 always
-    pub fn secp256k1_dleq_proof_serialize(
-        ctx: *const secp256k1_context,
-        out64: *mut c_uchar,
-        proof: *const secp256k1_dleq_proof,
-    ) -> c_int;
-
-    /// Parse a DLEQ proof from 64 bytes.
-    ///
-    /// Returns: 1 on success, 0 if invalid
-    pub fn secp256k1_dleq_proof_parse(
-        ctx: *const secp256k1_context,
-        proof: *mut secp256k1_dleq_proof,
-        in64: *const c_uchar,
     ) -> c_int;
 }

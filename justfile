@@ -138,7 +138,7 @@ update-vendor secp_path="":
   echo "  - Copying secp256k1.c..."
   cp "$SECP_SRC"/src/secp256k1.c "$VENDOR_DIR/src/"
 
-  # Copy precomputed tables (large files)
+  # Copy precomputed tables
   echo "  - Copying precomputed tables..."
   cp "$SECP_SRC"/src/precomputed_ecmult.c "$VENDOR_DIR/src/"
   cp "$SECP_SRC"/src/precomputed_ecmult_gen.c "$VENDOR_DIR/src/"
@@ -149,8 +149,8 @@ update-vendor secp_path="":
   echo "  - Headers:       include/secp256k1*.h"
   echo "  - Modules:       src/modules/*"
   echo "  - Source:        src/*.h, src/secp256k1.c"
-  echo "  - Tables:        src/precomputed_*.c (2.5MB)"
+  echo "  - Tables:        src/precomputed_*.c"
   echo ""
   echo "Next steps:"
-  echo "  1. Test native build:  just test-native"
-  echo "  2. Verify BIP-374:     cargo test --features native --test test_vectors"
+  echo "  Test native build:  just test-native"
+  
