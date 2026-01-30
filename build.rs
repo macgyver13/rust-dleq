@@ -10,7 +10,7 @@ fn build_secp256k1() {
     use std::env;
     use std::path::{Path, PathBuf};
 
-    // Try multiple secp256k1sources in order of preference
+    // Try multiple secp256k1 sources in order of preference
     let secp_base = if let Ok(custom_path) = env::var("SECP256K1_SRC") {
         PathBuf::from(custom_path)
     } else if Path::new("secp256k1/src/secp256k1.c").exists() {
@@ -25,6 +25,7 @@ fn build_secp256k1() {
                 3. Use the 'standalone' feature instead"
         );
     };
+    println!("rust-dleq: using secp256k1 at {}", secp_base.display());
 
     // Compile secp256k1.c (single-file compilation includes all modules)
     let mut build = cc::Build::new();
