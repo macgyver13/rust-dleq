@@ -24,6 +24,10 @@ extern "C" {
  *  Proves knowledge of scalar a such that A = a*G and C = a*B without
  *  revealing a.
  *
+ *  Does _not_ strictly follow BIP-374 because it does not verify the resulting
+ *  proof. Instead, you can manually use secp256k1_dleq_verify and abort if it
+ *  fails.
+ *
  *  Returns: 1 if proof generation succeeded
  *           0 if nonce generation failed (negligible probability) or
  *             if any input is invalid
@@ -32,8 +36,8 @@ extern "C" {
  *  Out:     proof64: pointer to 64-byte proof = bytes(32, e) || bytes(32, s)
  *  In:     seckey32: pointer to 32-byte secret key (scalar a)
  *          pubkey_B: pointer to public key B (base point)
- *       aux_rand32: pointer to 32-byte auxiliary randomness (can be NULL)
- *              msg: pointer to 32-byte message (can be NULL)
+ *        aux_rand32: pointer to 32-byte auxiliary randomness (can be NULL)
+ *               msg: pointer to 32-byte message (can be NULL)
  */
 SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_dleq_prove(
     const secp256k1_context *ctx,
@@ -42,8 +46,7 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_dleq_prove(
     const secp256k1_pubkey *pubkey_B,
     const unsigned char *aux_rand32,
     const unsigned char *msg
-) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3)
-  SECP256K1_ARG_NONNULL(4);
+) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_ARG_NONNULL(4);
 
 /** Verify a DLEQ proof.
  *
@@ -53,7 +56,7 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_dleq_prove(
  *           0 if proof is invalid or any input is invalid
  *
  *  Args:       ctx: pointer to a context object
- *  In:      proof64: pointer to 64-byte proof = bytes(32, e) || bytes(32, s)
+ *  In:     proof64: pointer to 64-byte proof = bytes(32, e) || bytes(32, s)
  *         pubkey_A: pointer to public key A
  *         pubkey_B: pointer to public key B (base point)
  *         pubkey_C: pointer to public key C
@@ -66,8 +69,7 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_dleq_verify(
     const secp256k1_pubkey *pubkey_B,
     const secp256k1_pubkey *pubkey_C,
     const unsigned char *msg
-) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3)
-  SECP256K1_ARG_NONNULL(4) SECP256K1_ARG_NONNULL(5);
+) SECP256K1_ARG_NONNULL(1) SECP256K1_ARG_NONNULL(2) SECP256K1_ARG_NONNULL(3) SECP256K1_ARG_NONNULL(4) SECP256K1_ARG_NONNULL(5);
 
 #ifdef __cplusplus
 }

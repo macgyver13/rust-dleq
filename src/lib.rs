@@ -13,7 +13,7 @@
 //! This crate provides two implementations:
 //!
 //! - **`standalone`** (default): Pure Rust implementation using rust-secp256k1 for EC operations
-//! - **`native`**: Uses libsecp256k1 from PR #1651 (requires git submodule)
+//! - **`native`**: Uses libsecp256k1 from PR #1802 (requires git submodule)
 //!
 //! ## Example
 //!

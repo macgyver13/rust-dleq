@@ -6,7 +6,7 @@ BIP-374 DLEQ (Discrete Log Equality) proof implementation for Bitcoin.
 
 This library implements [BIP-374](https://github.com/bitcoin/bips/blob/master/bip-0374.mediawiki) DLEQ proofs, which prove that the same discrete logarithm relationship holds across two different bases without revealing the private key. DLEQ proofs are primarily used in [BIP-352 Silent Payments](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki) to verify correct ECDH computation.
 
-**Implementation Status:** This crate is based on [libsecp256k1 PR #1651](https://github.com/bitcoin-core/secp256k1/pull/1651) and is planned to be upstreamed to [rust-secp256k1](https://github.com/rust-bitcoin/rust-secp256k1) as this implementation matures.  [Contributions](#contributing) are welcome!
+**Implementation Status:** This crate is based on [libsecp256k1 PR #1802](https://github.com/bitcoin-core/secp256k1/pull/1802) and is planned to be upstreamed to [rust-secp256k1](https://git.rust-bitcoin.org/rust-bitcoin/rust-secp256k1) as this implementation matures. [Contributions](#contributing) are welcome!
 
 ## Features
 
@@ -34,7 +34,7 @@ rust-dleq = { version = "0.1", default-features = false, features = ["native"] }
 
 **Note:** The `native` feature requires secp256k1 source files. The build script checks:
 1. `vendor/secp256k1/` (vendored copy, included in repo)
-2. `secp256k1/` (git submodule: `git clone --branch dleq-sp-stratospher https://github.com/macgyver13/secp256k1.git secp256k1`)
+2. `secp256k1/` (git submodule: `git clone --branch dleq-module-standalone https://github.com/macgyver13/secp256k1.git secp256k1`)
 3. Custom path via `SECP256K1_SRC` environment variable
 
 ## Quick Start with Just
@@ -152,8 +152,8 @@ just test    # All tests pass
 
 - [BIP-374: Discrete Log Equality Proofs](https://github.com/bitcoin/bips/blob/master/bip-0374.mediawiki)
 - [BIP-352: Silent Payments](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki)
-- [libsecp256k1 PR #1651](https://github.com/bitcoin-core/secp256k1/pull/1651)
-- [rust-secp256k1](https://github.com/rust-bitcoin/rust-secp256k1)
+- [libsecp256k1 PR #1802](https://github.com/bitcoin-core/secp256k1/pull/1802)
+- [rust-secp256k1](https://git.rust-bitcoin.org/rust-bitcoin/rust-secp256k1)
 
 ## License
 

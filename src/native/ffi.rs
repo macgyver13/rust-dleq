@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! Direct FFI bindings to libsecp256k1 DLEQ functions from PR #1651.
+//! Direct FFI bindings to libsecp256k1 DLEQ functions from PR #1802.
 //!
 //! These bindings target the internal DLEQ implementation in
 //! src/modules/silentpayments/dleq_impl.h
