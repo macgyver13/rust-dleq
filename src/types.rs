@@ -5,9 +5,6 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-#[cfg(all(not(feature = "std"), feature = "serde"))]
-use alloc::format;
-
 use core::fmt;
 
 /// A 64-byte DLEQ proof (BIP-374).
@@ -52,9 +49,7 @@ impl<'de> serde::Deserialize<'de> for DleqProof {
                 {
                     use bitcoin_hashes::hex::FromHex;
                     let vec = Vec::<u8>::from_hex(s).map_err(E::custom)?;
-                    DleqProof::try_from(vec.as_slice()).map_err(|e| {
-                        E::custom(format!("expected {} bytes, got {}", e.expected, e.got))
-                    })
+                    DleqProof::try_from(vec.as_slice()).map_err(E::custom)
                 }
             }
             deserializer.deserialize_str(HexVisitor)
@@ -71,9 +66,7 @@ impl<'de> serde::Deserialize<'de> for DleqProof {
                 where
                     E: serde::de::Error,
                 {
-                    DleqProof::try_from(v).map_err(|e| {
-                        E::custom(format!("expected {} bytes, got {}", e.expected, e.got))
-                    })
+                    DleqProof::try_from(v).map_err(E::custom)
                 }
             }
             deserializer.deserialize_bytes(BytesVisitor)
