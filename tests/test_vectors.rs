@@ -28,7 +28,7 @@ fn to_array_64(vec: Vec<u8>) -> [u8; 64] {
 #[test]
 fn test_vectors_generate_proof() {
     let secp = Secp256k1::new();
-    let file = File::open("tests/test_vectors_generate_proof.csv")
+    let file = File::open("vendor/secp256k1/src/modules/dleq/test_vectors_generate_proof.csv")
         .expect("Failed to open test vectors file");
     let reader = BufReader::new(file);
 
@@ -159,7 +159,7 @@ fn test_vectors_generate_proof() {
 #[test]
 fn test_vectors_verify_proof() {
     let secp = Secp256k1::new();
-    let file = File::open("tests/test_vectors_verify_proof.csv")
+    let file = File::open("vendor/secp256k1/src/modules/dleq/test_vectors_verify_proof.csv")
         .expect("Failed to open test vectors file");
     let reader = BufReader::new(file);
 
