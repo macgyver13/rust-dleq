@@ -5,9 +5,9 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
-use bitcoin_hashes::{sha256, Hash, HashEngine};
-use secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey};
+use bitcoin_hashes::{sha256, HashEngine};
 use secp256k1::constants::GENERATOR_X;
+use secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey};
 
 use crate::types::{DleqError, DleqProof};
 
@@ -54,9 +54,9 @@ fn generator_point() -> PublicKey {
 /// use rust_dleq::generate_dleq_proof;
 ///
 /// let secp = Secp256k1::new();
-/// let secret = SecretKey::from_slice(&[1u8; 32]).unwrap();
-/// let scan_key = PublicKey::from_secret_key(&secp,
-///     &SecretKey::from_slice(&[2u8; 32]).unwrap());
+/// let secret = SecretKey::from_secret_bytes([1u8; 32]).unwrap();
+/// let scan_key = PublicKey::from_secret_key(
+///     &SecretKey::from_secret_bytes([2u8; 32]).unwrap());
 /// let aux_rand = [3u8; 32];
 ///
 /// let proof = generate_dleq_proof(&secp, &secret, &scan_key, &aux_rand, None).unwrap();
@@ -73,14 +73,12 @@ pub fn generate_dleq_proof<C: secp256k1::Signing + secp256k1::Verification>(
 
     // Compute A = a*G and C = a*B
     let a_scalar: Scalar = (*a).into();
-    let a_point = PublicKey::from_secret_key(secp, a);
-    let c_point = b
-        .mul_tweak(secp, &a_scalar)
-        .map_err(|_| DleqError::TweakFailed)?;
+    let a_point = PublicKey::from_secret_key(a);
+    let c_point = b.mul_tweak(&a_scalar).map_err(|_| DleqError::TweakFailed)?;
 
     // Compute t = a XOR H_aux(r)
     let aux_hash = tagged_hash(DLEQ_TAG_AUX, aux_rand);
-    let a_bytes = a.secret_bytes();
+    let a_bytes = a.to_secret_bytes();
     let t = xor_bytes(&a_bytes, &aux_hash);
 
     // Compute nonce: k = H_nonce(t || A || C || m) mod n
@@ -96,17 +94,19 @@ pub fn generate_dleq_proof<C: secp256k1::Signing + secp256k1::Verification>(
     let k = Scalar::from_be_bytes(nonce_hash).map_err(|_| DleqError::InvalidNonce)?;
 
     // Check if k is zero by trying to convert to SecretKey
-    let k_key = SecretKey::from_slice(&k.to_be_bytes()).map_err(|_| DleqError::InvalidNonce)?;
+    let k_key =
+        SecretKey::from_secret_bytes(k.to_be_bytes()).map_err(|_| DleqError::InvalidNonce)?;
 
     // Compute R1 = k*G and R2 = k*B
-    let r1 = PublicKey::from_secret_key(secp, &k_key);
-    let r2 = b.mul_tweak(secp, &k).map_err(|_| DleqError::TweakFailed)?;
+    let r1 = PublicKey::from_secret_key(&k_key);
+    let r2 = b.mul_tweak(&k).map_err(|_| DleqError::TweakFailed)?;
 
     // Compute challenge e = H_challenge(A, B, C, G, R1, R2, m)
     let e = dleq_challenge(&a_point, b, &c_point, &g_point, &r1, &r2, m);
 
     // Compute s = k + e*a (mod n)
-    let e_key = SecretKey::from_slice(&e.to_be_bytes()).map_err(|_| DleqError::InvalidChallenge)?;
+    let e_key =
+        SecretKey::from_secret_bytes(e.to_be_bytes()).map_err(|_| DleqError::InvalidChallenge)?;
     let ea = e_key
         .mul_tweak(&a_scalar)
         .map_err(|_| DleqError::TweakFailed)?;
@@ -158,11 +158,11 @@ pub fn generate_dleq_proof<C: secp256k1::Signing + secp256k1::Verification>(
 /// use rust_dleq::{generate_dleq_proof, verify_dleq_proof};
 ///
 /// let secp = Secp256k1::new();
-/// let secret = SecretKey::from_slice(&[1u8; 32]).unwrap();
-/// let pubkey = PublicKey::from_secret_key(&secp, &secret);
-/// let scan_key = PublicKey::from_secret_key(&secp,
-///     &SecretKey::from_slice(&[2u8; 32]).unwrap());
-/// let ecdh_share = scan_key.mul_tweak(&secp, &secret.into()).unwrap();
+/// let secret = SecretKey::from_secret_bytes([1u8; 32]).unwrap();
+/// let pubkey = PublicKey::from_secret_key(&secret);
+/// let scan_key = PublicKey::from_secret_key(
+///     &SecretKey::from_secret_bytes([2u8; 32]).unwrap());
+/// let ecdh_share = scan_key.mul_tweak(&secret.into()).unwrap();
 /// let aux_rand = [3u8; 32];
 ///
 /// let proof = generate_dleq_proof(&secp, &secret, &scan_key, &aux_rand, None).unwrap();
@@ -188,20 +188,21 @@ pub fn verify_dleq_proof<C: secp256k1::Verification + secp256k1::Signing>(
     let g_point = generator_point();
 
     // Compute R1 = s*G - e*A
-    let s_key = SecretKey::from_slice(&s.to_be_bytes()).map_err(|_| DleqError::TweakFailed)?;
-    let s_g = PublicKey::from_secret_key(secp, &s_key);
-    let e_a = a.mul_tweak(secp, &e).map_err(|_| DleqError::TweakFailed)?;
+    let s_key =
+        SecretKey::from_secret_bytes(s.to_be_bytes()).map_err(|_| DleqError::TweakFailed)?;
+    let s_g = PublicKey::from_secret_key(&s_key);
+    let e_a = a.mul_tweak(&e).map_err(|_| DleqError::TweakFailed)?;
 
     let r1 = s_g
-        .combine(&e_a.negate(secp))
+        .combine(&e_a.negate())
         .map_err(|_| DleqError::PointCombineFailed)?;
 
     // Compute R2 = s*B - e*C
-    let s_b = b.mul_tweak(secp, &s).map_err(|_| DleqError::TweakFailed)?;
-    let e_c = c.mul_tweak(secp, &e).map_err(|_| DleqError::TweakFailed)?;
+    let s_b = b.mul_tweak(&s).map_err(|_| DleqError::TweakFailed)?;
+    let e_c = c.mul_tweak(&e).map_err(|_| DleqError::TweakFailed)?;
 
     let r2 = s_b
-        .combine(&e_c.negate(secp))
+        .combine(&e_c.negate())
         .map_err(|_| DleqError::PointCombineFailed)?;
 
     // Verify challenge
@@ -281,15 +282,15 @@ mod tests {
         let secp = Secp256k1::new();
 
         // Generate keypair for party A
-        let a = SecretKey::from_slice(&[1u8; 32]).unwrap();
-        let a_pub = PublicKey::from_secret_key(&secp, &a);
+        let a = SecretKey::from_secret_bytes([1u8; 32]).unwrap();
+        let a_pub = PublicKey::from_secret_key(&a);
 
         // Generate public key for party B
-        let b_priv = SecretKey::from_slice(&[2u8; 32]).unwrap();
-        let b = PublicKey::from_secret_key(&secp, &b_priv);
+        let b_priv = SecretKey::from_secret_bytes([2u8; 32]).unwrap();
+        let b = PublicKey::from_secret_key(&b_priv);
 
         // Compute shared secret C = a*B
-        let c = b.mul_tweak(&secp, &a.into()).unwrap();
+        let c = b.mul_tweak(&a.into()).unwrap();
 
         // Generate proof
         let rand_aux = [3u8; 32];
@@ -304,11 +305,11 @@ mod tests {
     fn test_dleq_proof_with_message() {
         let secp = Secp256k1::new();
 
-        let a = SecretKey::from_slice(&[1u8; 32]).unwrap();
-        let a_pub = PublicKey::from_secret_key(&secp, &a);
-        let b_priv = SecretKey::from_slice(&[2u8; 32]).unwrap();
-        let b = PublicKey::from_secret_key(&secp, &b_priv);
-        let c = b.mul_tweak(&secp, &a.into()).unwrap();
+        let a = SecretKey::from_secret_bytes([1u8; 32]).unwrap();
+        let a_pub = PublicKey::from_secret_key(&a);
+        let b_priv = SecretKey::from_secret_bytes([2u8; 32]).unwrap();
+        let b = PublicKey::from_secret_key(&b_priv);
+        let c = b.mul_tweak(&a.into()).unwrap();
 
         let message = [0x42u8; 32];
         let rand_aux = [3u8; 32];
@@ -327,17 +328,17 @@ mod tests {
     fn test_dleq_proof_invalid_verification() {
         let secp = Secp256k1::new();
 
-        let a = SecretKey::from_slice(&[1u8; 32]).unwrap();
-        let a_pub = PublicKey::from_secret_key(&secp, &a);
-        let b_priv = SecretKey::from_slice(&[2u8; 32]).unwrap();
-        let b = PublicKey::from_secret_key(&secp, &b_priv);
+        let a = SecretKey::from_secret_bytes([1u8; 32]).unwrap();
+        let a_pub = PublicKey::from_secret_key(&a);
+        let b_priv = SecretKey::from_secret_bytes([2u8; 32]).unwrap();
+        let b = PublicKey::from_secret_key(&b_priv);
 
         let rand_aux = [3u8; 32];
         let proof = generate_dleq_proof(&secp, &a, &b, &rand_aux, None).unwrap();
 
         // Verify with wrong C point should fail
-        let wrong_c_priv = SecretKey::from_slice(&[99u8; 32]).unwrap();
-        let wrong_c = PublicKey::from_secret_key(&secp, &wrong_c_priv);
+        let wrong_c_priv = SecretKey::from_secret_bytes([99u8; 32]).unwrap();
+        let wrong_c = PublicKey::from_secret_key(&wrong_c_priv);
         assert!(!verify_dleq_proof(&secp, &a_pub, &b, &wrong_c, &proof, None).unwrap());
     }
 
@@ -345,11 +346,11 @@ mod tests {
     fn test_dleq_proof_roundtrip() {
         let secp = Secp256k1::new();
 
-        let a = SecretKey::from_slice(&[1u8; 32]).unwrap();
-        let a_pub = PublicKey::from_secret_key(&secp, &a);
-        let b_priv = SecretKey::from_slice(&[2u8; 32]).unwrap();
-        let b = PublicKey::from_secret_key(&secp, &b_priv);
-        let c = b.mul_tweak(&secp, &a.into()).unwrap();
+        let a = SecretKey::from_secret_bytes([1u8; 32]).unwrap();
+        let a_pub = PublicKey::from_secret_key(&a);
+        let b_priv = SecretKey::from_secret_bytes([2u8; 32]).unwrap();
+        let b = PublicKey::from_secret_key(&b_priv);
+        let c = b.mul_tweak(&a.into()).unwrap();
 
         let rand_aux = [3u8; 32];
         let proof = generate_dleq_proof(&secp, &a, &b, &rand_aux, None).unwrap();

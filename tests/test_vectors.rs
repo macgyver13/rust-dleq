@@ -92,8 +92,7 @@ fn test_vectors_generate_proof() {
         // Check if this is the standard secp256k1 generator
         // We only support standard G now (custom generators removed)
         let standard_g = PublicKey::from_secret_key(
-            &secp,
-            &SecretKey::from_slice(&[
+            &SecretKey::from_secret_bytes([
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 1,
             ])
@@ -107,7 +106,7 @@ fn test_vectors_generate_proof() {
         }
 
         // Parse scalar a
-        let scalar_a = match SecretKey::from_slice(&scalar_a_bytes) {
+        let scalar_a = match SecretKey::from_secret_bytes(to_array_32(scalar_a_bytes.clone())) {
             Ok(s) => s,
             Err(e) => {
                 println!("  FAILED: Could not parse scalar_a: {}", e);
@@ -220,8 +219,7 @@ fn test_vectors_verify_proof() {
         // Check if this is the standard secp256k1 generator
         // We only support standard G now (custom generators removed)
         let standard_g = PublicKey::from_secret_key(
-            &secp,
-            &SecretKey::from_slice(&[
+            &SecretKey::from_secret_bytes([
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 1,
             ])

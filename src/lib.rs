@@ -24,15 +24,15 @@
 //! let secp = Secp256k1::new();
 //!
 //! // Generate keypair
-//! let secret = SecretKey::from_slice(&[1u8; 32]).unwrap();
-//! let pubkey = PublicKey::from_secret_key(&secp, &secret);
+//! let secret = SecretKey::from_secret_bytes([1u8; 32]).unwrap();
+//! let pubkey = PublicKey::from_secret_key(&secret);
 //!
 //! // Scan key (recipient's public key)
-//! let scan_key = PublicKey::from_secret_key(&secp,
-//!     &SecretKey::from_slice(&[2u8; 32]).unwrap());
+//! let scan_key = PublicKey::from_secret_key(
+//!     &SecretKey::from_secret_bytes([2u8; 32]).unwrap());
 //!
 //! // Compute ECDH share
-//! let ecdh_share = scan_key.mul_tweak(&secp, &secret.into()).unwrap();
+//! let ecdh_share = scan_key.mul_tweak(&secret.into()).unwrap();
 //!
 //! // Generate DLEQ proof
 //! let aux_rand = [3u8; 32];

@@ -49,11 +49,14 @@ pub fn generate_dleq_proof<C: secp256k1::Signing + secp256k1::Verification>(
         // Prepare proof structure
         let mut proof = ffi::secp256k1_dleq_proof { data: [0u8; 64] };
 
+        // Keep the secret bytes alive for the duration of the FFI call
+        let a_bytes = a.to_secret_bytes();
+
         // Call native DLEQ proof generation
         let result = ffi::secp256k1_dleq_prove(
             ctx,
             &mut proof,
-            a.as_ref().as_ptr(),
+            a_bytes.as_ptr(),
             &ffi_pubkey_b,
             aux_rand.as_ptr(),
             m.map(|msg| msg.as_ptr()).unwrap_or(core::ptr::null()),
@@ -169,16 +172,16 @@ mod tests {
     #[test]
     fn test_ffi_roundtrip() {
         let secp = Secp256k1::new();
-        let secret = SecretKey::new(&mut secp256k1::rand::thread_rng());
-        let b = PublicKey::from_secret_key(&secp, &secret);
+        let secret = SecretKey::new(&mut secp256k1::rand::rng());
+        let b = PublicKey::from_secret_key(&secret);
         let aux_rand = [0u8; 32];
 
         let proof = generate_dleq_proof(&secp, &secret, &b, &aux_rand, None)
             .expect("proof generation should succeed");
 
-        let a = PublicKey::from_secret_key(&secp, &secret);
+        let a = PublicKey::from_secret_key(&secret);
         let scalar: secp256k1::Scalar = secret.into();
-        let c = b.mul_tweak(&secp, &scalar).expect("tweak should succeed");
+        let c = b.mul_tweak(&scalar).expect("tweak should succeed");
 
         let valid = verify_dleq_proof(&secp, &a, &b, &c, &proof, None)
             .expect("verification should succeed");
@@ -189,17 +192,17 @@ mod tests {
     #[test]
     fn test_ffi_with_message() {
         let secp = Secp256k1::new();
-        let secret = SecretKey::new(&mut secp256k1::rand::thread_rng());
-        let b = PublicKey::from_secret_key(&secp, &secret);
+        let secret = SecretKey::new(&mut secp256k1::rand::rng());
+        let b = PublicKey::from_secret_key(&secret);
         let aux_rand = [1u8; 32];
         let message = [42u8; 32];
 
         let proof = generate_dleq_proof(&secp, &secret, &b, &aux_rand, Some(&message))
             .expect("proof generation should succeed");
 
-        let a = PublicKey::from_secret_key(&secp, &secret);
+        let a = PublicKey::from_secret_key(&secret);
         let scalar: secp256k1::Scalar = secret.into();
-        let c = b.mul_tweak(&secp, &scalar).expect("tweak should succeed");
+        let c = b.mul_tweak(&scalar).expect("tweak should succeed");
 
         let valid = verify_dleq_proof(&secp, &a, &b, &c, &proof, Some(&message))
             .expect("verification should succeed");
@@ -210,12 +213,12 @@ mod tests {
     #[test]
     fn test_ffi_invalid_proof() {
         let secp = Secp256k1::new();
-        let secret = SecretKey::new(&mut secp256k1::rand::thread_rng());
-        let b = PublicKey::from_secret_key(&secp, &secret);
+        let secret = SecretKey::new(&mut secp256k1::rand::rng());
+        let b = PublicKey::from_secret_key(&secret);
 
-        let a = PublicKey::from_secret_key(&secp, &secret);
+        let a = PublicKey::from_secret_key(&secret);
         let scalar: secp256k1::Scalar = secret.into();
-        let c = b.mul_tweak(&secp, &scalar).expect("tweak should succeed");
+        let c = b.mul_tweak(&scalar).expect("tweak should succeed");
 
         // Create invalid proof
         let invalid_proof = DleqProof([0u8; 64]);

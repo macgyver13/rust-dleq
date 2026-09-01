@@ -22,7 +22,7 @@ This library implements [BIP-374](https://github.com/bitcoin/bips/blob/master/bi
 ```toml
 [dependencies]
 rust-dleq = "0.1"
-secp256k1 = "0.29"
+secp256k1 = "0.33"
 ```
 
 For native implementation (using libsecp256k1 directly):
@@ -63,15 +63,15 @@ use secp256k1::{Secp256k1, SecretKey, PublicKey};
 let secp = Secp256k1::new();
 
 // Your private key
-let secret = SecretKey::from_slice(&[0x01; 32])?;
-let pubkey = PublicKey::from_secret_key(&secp, &secret);
+let secret = SecretKey::from_secret_bytes([0x01; 32])?;
+let pubkey = PublicKey::from_secret_key(&secret);
 
 // Recipient's scan key
-let scan_key = PublicKey::from_secret_key(&secp,
-    &SecretKey::from_slice(&[0x02; 32])?);
+let scan_key = PublicKey::from_secret_key(
+    &SecretKey::from_secret_bytes([0x02; 32])?);
 
 // Compute ECDH shared secret
-let ecdh_share = scan_key.mul_tweak(&secp, &secret.into())?;
+let ecdh_share = scan_key.mul_tweak(&secret.into())?;
 
 // Generate proof with 32 bytes of randomness
 let aux_rand = [0x03; 32];

@@ -47,9 +47,9 @@ impl<'de> serde::Deserialize<'de> for DleqProof {
                 where
                     E: serde::de::Error,
                 {
-                    use bitcoin_hashes::hex::FromHex;
-                    let vec = Vec::<u8>::from_hex(s).map_err(E::custom)?;
-                    DleqProof::try_from(vec.as_slice()).map_err(E::custom)
+                    bitcoin_hashes::hex::decode_to_array::<64>(s)
+                        .map(DleqProof)
+                        .map_err(E::custom)
                 }
             }
             deserializer.deserialize_str(HexVisitor)
