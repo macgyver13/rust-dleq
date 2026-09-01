@@ -1,5 +1,6 @@
 use rust_dleq::{generate_dleq_proof, verify_dleq_proof, DleqProof};
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
+use std::fmt::Write;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -9,6 +10,15 @@ fn hex_decode(hex: &str) -> Vec<u8> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("Invalid hex"))
         .collect()
+}
+
+/// Helper function to encode bytes as a lowercase hex string
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(out, "{:02x}", byte).expect("writing to a String cannot fail");
+    }
+    out
 }
 
 /// Helper function to convert Vec<u8> to [u8; 32]
@@ -28,7 +38,7 @@ fn to_array_64(vec: Vec<u8>) -> [u8; 64] {
 #[test]
 fn test_vectors_generate_proof() {
     let secp = Secp256k1::new();
-    let file = File::open("tests/test_vectors_generate_proof.csv")
+    let file = File::open("vendor/secp256k1/src/modules/dleq/test_vectors_generate_proof.csv")
         .expect("Failed to open test vectors file");
     let reader = BufReader::new(file);
 
@@ -135,8 +145,8 @@ fn test_vectors_generate_proof() {
                     passed += 1;
                 } else {
                     println!("  FAILED: Proof mismatch");
-                    println!("    Expected: {}", hex::encode(expected_proof));
-                    println!("    Got:      {}", hex::encode(proof.as_bytes()));
+                    println!("    Expected: {}", hex_encode(&expected_proof));
+                    println!("    Got:      {}", hex_encode(proof.as_bytes()));
                     failed += 1;
                 }
             }
@@ -159,7 +169,7 @@ fn test_vectors_generate_proof() {
 #[test]
 fn test_vectors_verify_proof() {
     let secp = Secp256k1::new();
-    let file = File::open("tests/test_vectors_verify_proof.csv")
+    let file = File::open("vendor/secp256k1/src/modules/dleq/test_vectors_verify_proof.csv")
         .expect("Failed to open test vectors file");
     let reader = BufReader::new(file);
 

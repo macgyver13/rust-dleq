@@ -7,6 +7,7 @@ use alloc::vec::Vec;
 
 use bitcoin_hashes::{sha256, Hash, HashEngine};
 use secp256k1::{PublicKey, Scalar, Secp256k1, SecretKey};
+use secp256k1::constants::GENERATOR_X;
 
 use crate::types::{DleqError, DleqProof};
 
@@ -14,6 +15,14 @@ use crate::types::{DleqError, DleqProof};
 const DLEQ_TAG_AUX: &str = "BIP0374/aux";
 const DLEQ_TAG_NONCE: &str = "BIP0374/nonce";
 const DLEQ_TAG_CHALLENGE: &str = "BIP0374/challenge";
+
+/// The standard secp256k1 generator G, in compressed form (its y coordinate is even).
+fn generator_point() -> PublicKey {
+    let mut serialized = [0u8; 33];
+    serialized[0] = 0x02;
+    serialized[1..].copy_from_slice(&GENERATOR_X);
+    PublicKey::from_slice(&serialized).expect("valid generator")
+}
 
 /// Generate a DLEQ proof per BIP-374.
 ///
@@ -60,21 +69,11 @@ pub fn generate_dleq_proof<C: secp256k1::Signing + secp256k1::Verification>(
     aux_rand: &[u8; 32],
     m: Option<&[u8; 32]>,
 ) -> Result<DleqProof, DleqError> {
-    // Use standard secp256k1 generator G
-    let g_point = PublicKey::from_secret_key(
-        secp,
-        &SecretKey::from_slice(&[
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 1,
-        ])
-        .expect("valid secret key"),
-    );
+    let g_point = generator_point();
 
     // Compute A = a*G and C = a*B
     let a_scalar: Scalar = (*a).into();
-    let a_point = g_point
-        .mul_tweak(secp, &a_scalar)
-        .map_err(|_| DleqError::TweakFailed)?;
+    let a_point = PublicKey::from_secret_key(secp, a);
     let c_point = b
         .mul_tweak(secp, &a_scalar)
         .map_err(|_| DleqError::TweakFailed)?;
@@ -100,9 +99,7 @@ pub fn generate_dleq_proof<C: secp256k1::Signing + secp256k1::Verification>(
     let k_key = SecretKey::from_slice(&k.to_be_bytes()).map_err(|_| DleqError::InvalidNonce)?;
 
     // Compute R1 = k*G and R2 = k*B
-    let r1 = g_point
-        .mul_tweak(secp, &k)
-        .map_err(|_| DleqError::TweakFailed)?;
+    let r1 = PublicKey::from_secret_key(secp, &k_key);
     let r2 = b.mul_tweak(secp, &k).map_err(|_| DleqError::TweakFailed)?;
 
     // Compute challenge e = H_challenge(A, B, C, G, R1, R2, m)
@@ -188,20 +185,11 @@ pub fn verify_dleq_proof<C: secp256k1::Verification + secp256k1::Signing>(
     let e = Scalar::from_be_bytes(e_bytes).map_err(|_| DleqError::InvalidProof)?;
     let s = Scalar::from_be_bytes(s_bytes).map_err(|_| DleqError::InvalidProof)?;
 
-    // Use standard secp256k1 generator G
-    let g_point = PublicKey::from_secret_key(
-        secp,
-        &SecretKey::from_slice(&[
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 1,
-        ])
-        .expect("valid secret key"),
-    );
+    let g_point = generator_point();
 
     // Compute R1 = s*G - e*A
-    let s_g = g_point
-        .mul_tweak(secp, &s)
-        .map_err(|_| DleqError::TweakFailed)?;
+    let s_key = SecretKey::from_slice(&s.to_be_bytes()).map_err(|_| DleqError::TweakFailed)?;
+    let s_g = PublicKey::from_secret_key(secp, &s_key);
     let e_a = a.mul_tweak(secp, &e).map_err(|_| DleqError::TweakFailed)?;
 
     let r1 = s_g

@@ -20,7 +20,6 @@ cc = { version = "1.0", optional = true }
 
 [dev-dependencies]
 secp256k1 = { version = "0.29", features = ["std", "rand-std"] }
-hex = "0.4"
 
 [features]
 default = ["std", "standalone"]
@@ -31,7 +30,7 @@ std = ["bitcoin_hashes/std"]
 # Standalone implementation (pure Rust + rust-secp256k1 EC ops)
 standalone = ["secp256k1", "std"]
 
-# Native implementation (direct FFI to libsecp256k1 from PR #1651)
+# Native implementation (direct FFI to libsecp256k1 from PR #1802)
 # Note: This feature requires the secp256k1 git submodule
 native = ["cc", "secp256k1", "std"]
 

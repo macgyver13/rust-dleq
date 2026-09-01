@@ -7,17 +7,24 @@
 #define SECP256K1_MODULE_DLEQ_TESTS_H
 
 #include "dleq_vectors.h"
+#include "../../unit_test.h"
 
 static void dleq_nonce_bitflip(unsigned char **args, size_t n_flip, size_t n_bytes) {
     secp256k1_scalar k1, k2;
-    CHECK(secp256k1_dleq_nonce(&k1, args[0], args[1], args[2], args[3], args[4]) == 1);
+    CHECK(secp256k1_dleq_nonce(&CTX->hash_ctx, &k1, args[0], args[1], args[2], args[3], args[4]) == 1);
     testrand_flip(args[n_flip], n_bytes);
-    CHECK(secp256k1_dleq_nonce(&k2, args[0], args[1], args[2], args[3], args[4]) == 1);
+    CHECK(secp256k1_dleq_nonce(&CTX->hash_ctx, &k2, args[0], args[1], args[2], args[3], args[4]) == 1);
     CHECK(secp256k1_scalar_eq(&k1, &k2) == 0);
 }
 
+static void dleq_sha256_zeros(uint32_t *state, const unsigned char *blocks64, size_t n_blocks) {
+    (void)blocks64;
+    (void)n_blocks;
+    memset(state, 0, 8 * sizeof(*state));
+}
+
 static void run_test_dleq_prove_verify(void) {
-    secp256k1_scalar s, e, a, k;
+    secp256k1_scalar e, s, a, k;
     secp256k1_ge A, B, C;
     unsigned char *args[5];
     unsigned char a32[32];
@@ -25,9 +32,7 @@ static void run_test_dleq_prove_verify(void) {
     unsigned char C_33[33];
     unsigned char aux_rand[32];
     unsigned char msg[32];
-    unsigned char proof_64[64] = {0};
     int i;
-    int overflow;
     secp256k1_sha256 sha;
     secp256k1_sha256 sha_optimized;
     unsigned char aux_tag[] = {'B', 'I', 'P', '0', '3', '7', '4', '/', 'a', 'u', 'x'};
@@ -35,17 +40,17 @@ static void run_test_dleq_prove_verify(void) {
     unsigned char challenge_tag[] = {'B', 'I', 'P', '0', '3', '7', '4', '/', 'c', 'h', 'a', 'l', 'l', 'e', 'n', 'g', 'e'};
 
     /* Check that hash initialized by secp256k1_nonce_function_bip374_sha256_tagged_aux has the expected state. */
-    secp256k1_sha256_initialize_tagged(&sha, aux_tag, sizeof(aux_tag));
+    secp256k1_sha256_initialize_tagged(&CTX->hash_ctx, &sha, aux_tag, sizeof(aux_tag));
     secp256k1_nonce_function_bip374_sha256_tagged_aux(&sha_optimized);
     test_sha256_eq(&sha, &sha_optimized);
 
     /* Check that hash initialized by secp256k1_nonce_function_bip374_sha256_tagged has the expected state. */
-    secp256k1_sha256_initialize_tagged(&sha, tag, sizeof(tag));
+    secp256k1_sha256_initialize_tagged(&CTX->hash_ctx, &sha, tag, sizeof(tag));
     secp256k1_nonce_function_bip374_sha256_tagged(&sha_optimized);
     test_sha256_eq(&sha, &sha_optimized);
 
     /* Check that hash initialized by secp256k1_dleq_sha256_tagged has the expected state. */
-    secp256k1_sha256_initialize_tagged(&sha, challenge_tag, sizeof(challenge_tag));
+    secp256k1_sha256_initialize_tagged(&CTX->hash_ctx, &sha, challenge_tag, sizeof(challenge_tag));
     secp256k1_dleq_sha256_tagged(&sha_optimized);
     test_sha256_eq(&sha, &sha_optimized);
 
@@ -55,40 +60,50 @@ static void run_test_dleq_prove_verify(void) {
         testrand256(aux_rand);
         testrand_bytes_test(msg, sizeof(msg));
         secp256k1_dleq_pair(&CTX->ecmult_gen_ctx, &A, &C, &a, &B);
-        CHECK(secp256k1_dleq_prove_internal(CTX, &s, &e, &a, &B, &A, &C, aux_rand, (i & 1) ? msg : NULL) == 1);
-        CHECK(secp256k1_dleq_verify_internal(&s, &e, &A, &B, &C, (i & 1) ? msg : NULL) == 1);
-        secp256k1_scalar_set_b32(&s, proof_64, &overflow);
-        VERIFY_CHECK(overflow == 0);
-        secp256k1_scalar_set_b32(&e, proof_64 + 32, &overflow);
-        VERIFY_CHECK(overflow == 0);
+        CHECK(secp256k1_dleq_prove_internal(CTX, &e, &s, &a, &B, &A, &C, aux_rand, (i & 1) ? msg : NULL) == 1);
+        CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &e, &s, &A, &B, &C, (i & 1) ? msg : NULL) == 1);
     }
 
     {
         secp256k1_scalar tmp;
         secp256k1_scalar_set_int(&tmp, 1);
-        CHECK(secp256k1_dleq_verify_internal(&tmp, &e, &A, &B, &C, msg) == 0);
-        CHECK(secp256k1_dleq_verify_internal(&s, &tmp, &A, &B, &C, msg) == 0);
+        CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &tmp, &s, &A, &B, &C, msg) == 0);
+        CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &e, &tmp, &A, &B, &C, msg) == 0);
     }
     {
         secp256k1_ge p_tmp;
         testutil_random_ge_test(&p_tmp);
-        CHECK(secp256k1_dleq_verify_internal(&s, &e, &p_tmp, &B, &C, msg) == 0);
-        CHECK(secp256k1_dleq_verify_internal(&s, &e, &A, &p_tmp, &C, msg) == 0);
-        CHECK(secp256k1_dleq_verify_internal(&s, &e, &A, &B, &p_tmp, msg) == 0);
+        CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &e, &s, &p_tmp, &B, &C, msg) == 0);
+        CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &e, &s, &A, &p_tmp, &C, msg) == 0);
+        CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &e, &s, &A, &B, &p_tmp, msg) == 0);
     }
     {
         secp256k1_ge p_inf;
         secp256k1_ge_set_infinity(&p_inf);
-        CHECK(secp256k1_dleq_prove_internal(CTX, &s, &e, &a, &p_inf, &A, &C, aux_rand, msg) == 0);
-        CHECK(secp256k1_dleq_prove_internal(CTX, &s, &e, &a, &B, &p_inf, &C, aux_rand, msg) == 0);
-        CHECK(secp256k1_dleq_prove_internal(CTX, &s, &e, &a, &B, &A, &p_inf, aux_rand, msg) == 0);
+        CHECK(secp256k1_dleq_prove_internal(CTX, &e, &s, &a, &p_inf, &A, &C, aux_rand, msg) == 0);
+        CHECK(secp256k1_dleq_prove_internal(CTX, &e, &s, &a, &B, &p_inf, &C, aux_rand, msg) == 0);
+        CHECK(secp256k1_dleq_prove_internal(CTX, &e, &s, &a, &B, &A, &p_inf, aux_rand, msg) == 0);
+    }
+    {
+        secp256k1_ge A_neg = secp256k1_ge_const_g;
+        secp256k1_scalar e_one;
+        secp256k1_scalar_set_int(&e_one, 1);
+        secp256k1_ge_neg(&A_neg, &A_neg);
+        secp256k1_scalar_set_int(&s, 1);
+        CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &e_one, &s, &A_neg, &B, &B, msg) == 0);
+    }
+    {
+        secp256k1_context *ctx = secp256k1_context_clone(CTX);
+        ctx->hash_ctx.fn_sha256_compression = dleq_sha256_zeros;
+        CHECK(secp256k1_dleq_prove_internal(ctx, &e, &s, &a, &B, &A, &C, aux_rand, msg) == 0);
+        secp256k1_context_destroy(ctx);
     }
 
     /* Nonce tests */
     secp256k1_scalar_get_b32(a32, &a);
-    secp256k1_eckey_pubkey_serialize33(&A, A_33);
-    secp256k1_eckey_pubkey_serialize33(&C, C_33);
-    CHECK(secp256k1_dleq_nonce(&k, a32, A_33, C_33, aux_rand, msg) == 1);
+    secp256k1_ge_serialize_ext33(A_33, &A);
+    secp256k1_ge_serialize_ext33(C_33, &C);
+    CHECK(secp256k1_dleq_nonce(&CTX->hash_ctx, &k, a32, A_33, C_33, aux_rand, msg) == 1);
 
     testrand_bytes_test(a32, sizeof(a32));
     testrand_bytes_test(A_33, sizeof(A_33));
@@ -104,18 +119,15 @@ static void run_test_dleq_prove_verify(void) {
     for (i = 0; i < COUNT; i++) {
         dleq_nonce_bitflip(args, 0, sizeof(a32));
         dleq_nonce_bitflip(args, 1, sizeof(A_33));
-        /* Flip C */
-        dleq_nonce_bitflip(args, 2, sizeof(C_33));
-        /* Flip C again */
         dleq_nonce_bitflip(args, 2, sizeof(C_33));
         dleq_nonce_bitflip(args, 3, sizeof(aux_rand));
         dleq_nonce_bitflip(args, 4, sizeof(msg));
     }
 
     /* NULL aux_rand and msg arguments are allowed.*/
-    CHECK(secp256k1_dleq_nonce(&k, a32, A_33, C_33, NULL, NULL) == 1);
-    CHECK(secp256k1_dleq_nonce(&k, a32, A_33, C_33, aux_rand, NULL) == 1);
-    CHECK(secp256k1_dleq_nonce(&k, a32, A_33, C_33, NULL, msg) == 1);
+    CHECK(secp256k1_dleq_nonce(&CTX->hash_ctx, &k, a32, A_33, C_33, NULL, NULL) == 1);
+    CHECK(secp256k1_dleq_nonce(&CTX->hash_ctx, &k, a32, A_33, C_33, aux_rand, NULL) == 1);
+    CHECK(secp256k1_dleq_nonce(&CTX->hash_ctx, &k, a32, A_33, C_33, NULL, msg) == 1);
 }
 
 /* Test BIP-374 test vectors ("Discrete Log Equality Proofs").
@@ -134,7 +146,7 @@ static int is_not_empty(const unsigned char *arr){
 }
 
 static void run_test_dleq_bip374_vectors(void) {
-    secp256k1_scalar a, s, e;
+    secp256k1_scalar a, e, s;
     secp256k1_ge A;
     secp256k1_ge B;
     secp256k1_ge C;
@@ -150,7 +162,7 @@ static void run_test_dleq_bip374_vectors(void) {
 
         secp256k1_scalar_set_b32(&a, a_bytes[i], NULL);
         if (is_not_empty(B_bytes[i])) {
-            CHECK(secp256k1_eckey_pubkey_parse(&B, B_bytes[i], 33) == 1);
+            CHECK(secp256k1_ge_parse_ext33(&B, B_bytes[i]) == 1);
         }
 
         secp256k1_dleq_pair(&CTX->ecmult_gen_ctx, &A, &C, &a, &B);
@@ -158,14 +170,14 @@ static void run_test_dleq_bip374_vectors(void) {
         if (is_not_empty(msg_bytes[i])) {
             m = msg_bytes[i];
         }
-        CHECK(secp256k1_dleq_prove_internal(CTX, &s, &e, &a, &B, &A, &C, (unsigned char*)(auxrand_bytes[i]), m) == ret);
+        CHECK(secp256k1_dleq_prove_internal(CTX, &e, &s, &a, &B, &A, &C, (unsigned char*)(auxrand_bytes[i]), m) == ret);
 
         if (ret) {
             unsigned char proof[64];
             secp256k1_scalar_get_b32(proof, &e);
             secp256k1_scalar_get_b32(proof + 32, &s);
             CHECK(memcmp(proof, proof_bytes[i], 64) == 0);
-            CHECK(secp256k1_dleq_verify_internal(&s, &e, &A, &B, &C, m) == 1);
+            CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &e, &s, &A, &B, &C, m) == 1);
         }
     }
 
@@ -176,14 +188,14 @@ static void run_test_dleq_bip374_vectors(void) {
         if (i > 2 && i < 6) {
             /* Skip tests indices 3-5: proof generation failure cases (a=0, a=N, B=infinity).
             * These contain placeholder data from test_vectors_generate_proof.csv that would
-            * fail to parse. Only indices 0-2 and 6-12 have valid test data. 
+            * fail to parse. Only indices 0-2 and 6-12 have valid test data.
             * */
             continue;
         }
 
-        CHECK(secp256k1_eckey_pubkey_parse(&A, A_bytes[i], 33) == 1);
-        CHECK(secp256k1_eckey_pubkey_parse(&B, B_bytes[i], 33) == 1);
-        CHECK(secp256k1_eckey_pubkey_parse(&C, C_bytes[i], 33) == 1);
+        CHECK(secp256k1_ge_parse_ext33(&A, A_bytes[i]) == 1);
+        CHECK(secp256k1_ge_parse_ext33(&B, B_bytes[i]) == 1);
+        CHECK(secp256k1_ge_parse_ext33(&C, C_bytes[i]) == 1);
 
         secp256k1_scalar_set_b32(&e, proof_bytes[i], NULL);
         secp256k1_scalar_set_b32(&s, proof_bytes[i] + 32, NULL);
@@ -191,8 +203,8 @@ static void run_test_dleq_bip374_vectors(void) {
         if (is_not_empty(msg_bytes[i])) {
             m = msg_bytes[i];
         }
-        
-        CHECK(secp256k1_dleq_verify_internal(&s, &e, &A, &B, &C, m) == success[i]);
+
+        CHECK(secp256k1_dleq_verify_internal(&CTX->hash_ctx, &e, &s, &A, &B, &C, m) == success[i]);
     }
 }
 
@@ -219,6 +231,17 @@ static void run_test_dleq_api(void) {
     CHECK_ILLEGAL(CTX, secp256k1_dleq_prove(CTX, proof, seckey, NULL, aux_rand, msg));
     CHECK(secp256k1_dleq_prove(CTX, proof, seckey, &B, NULL, msg) == 1);
     CHECK(secp256k1_dleq_prove(CTX, proof, seckey, &B, aux_rand, NULL) == 1);
+    {
+        secp256k1_pubkey invalid_pubkey = { 0 };
+        CHECK_ILLEGAL(CTX, secp256k1_dleq_prove(CTX, proof, seckey, &invalid_pubkey, aux_rand, msg));
+    }
+    {
+        unsigned char invalid_seckey[32] = { 0 };
+        /* Test invalid secret key handling */
+        CHECK(secp256k1_dleq_prove(CTX, proof, invalid_seckey, &B, aux_rand, msg) == 0);
+        memcpy(invalid_seckey, secp256k1_group_order_bytes, sizeof(invalid_seckey));
+        CHECK(secp256k1_dleq_prove(CTX, proof, invalid_seckey, &B, aux_rand, msg) == 0);
+    }
 
     /* Generate verify material */
     secp256k1_scalar_set_b32(&a, seckey, NULL);
@@ -231,12 +254,48 @@ static void run_test_dleq_api(void) {
     CHECK_ILLEGAL(CTX, secp256k1_dleq_verify(CTX, proof, NULL, &B, &C, msg));
     CHECK_ILLEGAL(CTX, secp256k1_dleq_verify(CTX, proof, &A, NULL, &C, msg));
     CHECK_ILLEGAL(CTX, secp256k1_dleq_verify(CTX, proof, &A, &B, NULL, msg));
-    
-    /* Verify public API prove and verify functions */
+    {
+        secp256k1_pubkey invalid_pubkey = { 0 };
+        CHECK_ILLEGAL(CTX, secp256k1_dleq_verify(CTX, proof, &invalid_pubkey, &B, &C, msg));
+        CHECK_ILLEGAL(CTX, secp256k1_dleq_verify(CTX, proof, &A, &invalid_pubkey, &C, msg));
+        CHECK_ILLEGAL(CTX, secp256k1_dleq_verify(CTX, proof, &A, &B, &invalid_pubkey, msg));
+    }
+    /* Verify rejects an invalid (all-zero) proof */
+    memset(proof, 0, sizeof(proof));
+    CHECK(secp256k1_dleq_verify(CTX, proof, &A, &B, &C, NULL) == 0);
+
+    /* Verify rejects an e or s that overflows the group order */
+    CHECK(secp256k1_dleq_prove(CTX, proof, seckey, &B, NULL, NULL) == 1);
+    memcpy(&proof[0], secp256k1_group_order_bytes, 32);
+    CHECK(secp256k1_dleq_verify(CTX, proof, &A, &B, &C, NULL) == 0);
+    CHECK(secp256k1_dleq_prove(CTX, proof, seckey, &B, NULL, NULL) == 1);
+    memcpy(&proof[32], secp256k1_group_order_bytes, 32);
+    CHECK(secp256k1_dleq_verify(CTX, proof, &A, &B, &C, NULL) == 0);
+
+    /* A proof over a message verifies only against that message */
     CHECK(secp256k1_dleq_prove(CTX, proof, seckey, &B, aux_rand, msg) == 1);
     CHECK(secp256k1_dleq_verify(CTX, proof, &A, &B, &C, msg) == 1);
+    CHECK(secp256k1_dleq_verify(CTX, proof, &A, &B, &C, NULL) == 0);
+    {
+        unsigned char wrong_msg[32];
+        testrand256(wrong_msg);
+        CHECK(secp256k1_dleq_verify(CTX, proof, &A, &B, &C, wrong_msg) == 0);
+    }
+
+    /* A proof over no message does not verify against a message */
     CHECK(secp256k1_dleq_prove(CTX, proof, seckey, &B, NULL, NULL) == 1);
     CHECK(secp256k1_dleq_verify(CTX, proof, &A, &B, &C, NULL) == 1);
+    CHECK(secp256k1_dleq_verify(CTX, proof, &A, &B, &C, msg) == 0);
+
+    /* Verification needs no precomputed generator table */
+    CHECK(secp256k1_dleq_verify(STATIC_CTX, proof, &A, &B, &C, NULL) == 1);
+
+    {
+        secp256k1_context *ctx = secp256k1_context_clone(CTX);
+        ctx->hash_ctx.fn_sha256_compression = dleq_sha256_zeros;
+        CHECK(secp256k1_dleq_prove(ctx, proof, seckey, &B, aux_rand, msg) == 0);
+        secp256k1_context_destroy(ctx);
+    }
 }
 
 static const struct tf_test_entry tests_dleq[] = {
