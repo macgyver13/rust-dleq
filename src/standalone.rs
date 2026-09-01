@@ -73,9 +73,7 @@ pub fn generate_dleq_proof<C: secp256k1::Signing + secp256k1::Verification>(
 
     // Compute A = a*G and C = a*B
     let a_scalar: Scalar = (*a).into();
-    let a_point = g_point
-        .mul_tweak(secp, &a_scalar)
-        .map_err(|_| DleqError::TweakFailed)?;
+    let a_point = PublicKey::from_secret_key(secp, a);
     let c_point = b
         .mul_tweak(secp, &a_scalar)
         .map_err(|_| DleqError::TweakFailed)?;
@@ -101,9 +99,7 @@ pub fn generate_dleq_proof<C: secp256k1::Signing + secp256k1::Verification>(
     let k_key = SecretKey::from_slice(&k.to_be_bytes()).map_err(|_| DleqError::InvalidNonce)?;
 
     // Compute R1 = k*G and R2 = k*B
-    let r1 = g_point
-        .mul_tweak(secp, &k)
-        .map_err(|_| DleqError::TweakFailed)?;
+    let r1 = PublicKey::from_secret_key(secp, &k_key);
     let r2 = b.mul_tweak(secp, &k).map_err(|_| DleqError::TweakFailed)?;
 
     // Compute challenge e = H_challenge(A, B, C, G, R1, R2, m)
@@ -192,9 +188,8 @@ pub fn verify_dleq_proof<C: secp256k1::Verification + secp256k1::Signing>(
     let g_point = generator_point();
 
     // Compute R1 = s*G - e*A
-    let s_g = g_point
-        .mul_tweak(secp, &s)
-        .map_err(|_| DleqError::TweakFailed)?;
+    let s_key = SecretKey::from_slice(&s.to_be_bytes()).map_err(|_| DleqError::TweakFailed)?;
+    let s_g = PublicKey::from_secret_key(secp, &s_key);
     let e_a = a.mul_tweak(secp, &e).map_err(|_| DleqError::TweakFailed)?;
 
     let r1 = s_g
