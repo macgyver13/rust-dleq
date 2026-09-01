@@ -50,6 +50,19 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+/// Re-export of the `secp256k1` crate this library was built against.
+///
+/// `secp256k1` types appear in this crate's public API, so a consumer passing in
+/// its own `PublicKey` or `SecretKey` must be on the same version. Importing them
+/// through this re-export guarantees that:
+///
+/// ```
+/// use rust_dleq::secp256k1::{PublicKey, SecretKey};
+/// ```
+///
+/// A version mismatch is a hard compile error, not a warning.
+pub use secp256k1;
+
 // Shared types (always available)
 mod types;
 pub use types::{DleqError, DleqProof, InvalidLengthError};
